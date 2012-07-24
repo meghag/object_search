@@ -55,9 +55,14 @@ int main (int argc, char** argv)
       seg.setNormalDistanceWeight (0.1);
       seg.setMaxIterations (10000);
       seg.setDistanceThreshold (0.02);
-      seg.setRadiusLimits (0, 0.05);
+      seg.setRadiusLimits (0.01, 0.05);
       seg.setInputCloud (object_cloud);
       seg.setInputNormals (cloud_normals);
+      Eigen::Vector3f v;
+      v << 0.0f, 0.0f, 1.0f;
+      //      v[2] = 1.0f;
+      seg.setAxis(v);
+      seg.setEpsAngle(0.1);
 
       // Obtain the cylinder inliers and coefficients
       seg.segment (*inliers_cylinder, *coefficients_cylinder);

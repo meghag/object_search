@@ -30,4 +30,5 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 #target_link_libraries(example ${PROJECT_NAME})
 
 rosbuild_add_executable(collect_data src/collect_data.cpp src/planar_seg.cpp src/pass_through_gen.cpp)
-rosbuild_add_executable(read_pcd_file src/read_pcd_file.cpp)
+rosbuild_add_executable(cylinder_seg src/extract_cylinders_from_pcd.cpp)
+rosbuild_add_executable(color_seg src/extract_color_clusters_from_pcd.cpp src/extract_color_clusters.cpp)
