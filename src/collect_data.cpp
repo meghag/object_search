@@ -18,7 +18,11 @@ std::string cloud_topic = "/head_mount_kinect/depth_registered/points";
 using namespace std;
 using namespace pcl;
 
-int pass_through_gen(pcl::PointCloud<pcl::PointXYZRGB>::Ptr& pcd_orig, pcl::PointCloud<pcl::PointXYZRGB>::Ptr& pcd_filtered, bool filterx, float xmin, float xmax, bool filtery,float ymin, float ymax, bool filterz, float zmin, float zmax);
+int pass_through_gen(pcl::PointCloud<pcl::PointXYZRGB>::Ptr& pcd_orig, 
+			pcl::PointCloud<pcl::PointXYZRGB>::Ptr& pcd_filtered, 
+			bool filterx, float xmin, float xmax, 
+			bool filtery,float ymin, float ymax, 
+			bool filterz, float zmin, float zmax);
 
 int planar_seg(pcl::PointCloud<pcl::PointXYZRGB>::Ptr orig_cloud,pcl::PointCloud<pcl::PointXYZRGB>::Ptr p_cloud, 
 	       pcl::PointCloud<pcl::PointXYZRGB>::Ptr o_cloud, string fname1, string fname2);
