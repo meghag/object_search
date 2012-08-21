@@ -61,6 +61,7 @@ private:
     pcl::PointCloud<PointT> objectCloud_;
 
     void callback(const sensor_msgs::PointCloud2::ConstPtr& pcd2) {
+        ROS_INFO("Inside Euclidean Segmentation callback.");
         pcl::PointCloud<PointT> cloud;
         fromROSMsg(*pcd2,cloud);
         objectCloud_ = cloud;
@@ -75,13 +76,14 @@ private:
         KdTree<PointT>::Ptr tree (new KdTreeFLANN<PointT>);
         vector<PointIndices> cluster_indices;
 
+        ROS_INFO("Object cloud has %zu points", object_cloud->points.size());
         vector<int> temp;
         for (size_t j = 0; j < object_cloud->points.size(); ++j)
             temp.push_back(j);
 
         boost::shared_ptr<const vector<int> > indices (new vector<int> (temp));
         tree->setInputCloud (object_cloud, indices);
-        euclidean_clustering(*object_cloud, *indices, tree, 0.03, cluster_indices, 1000, 15000);
+        euclidean_clustering(*object_cloud, *indices, tree, 0.02, cluster_indices, 2000, 100000);
 
         int j = 0;
         std::vector<sensor_msgs::PointCloud2> clusters;

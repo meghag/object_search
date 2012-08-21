@@ -10,21 +10,21 @@ int main(int argc, char** argv)
     ros::init(argc, argv, "arm_mover");
     ros::NodeHandle n;
 
-    if (argc != 4) {
+    if (argc != 8) {
         ROS_ERROR("Incorrect number of arguments");
         return -1;
     }
 
     ros::Publisher pose_pub = n.advertise<geometry_msgs::PoseStamped>("reset_position",1);
 
-    //actionlib::SimpleActionClient<arm_navigation_msgs::MoveArmAction> move_arm("move_left_arm",true);
-    actionlib::SimpleActionClient<arm_navigation_msgs::MoveArmAction> move_arm("move_right_arm",true);
+    actionlib::SimpleActionClient<arm_navigation_msgs::MoveArmAction> move_arm("move_left_arm",true);
+    //actionlib::SimpleActionClient<arm_navigation_msgs::MoveArmAction> move_arm("move_right_arm",true);
     move_arm.waitForServer();
     ROS_INFO("DUPLO: Connected to server");
     arm_navigation_msgs::MoveArmGoal goalA;
 
-    //goalA.motion_plan_request.group_name = "left_arm";
-    goalA.motion_plan_request.group_name = "right_arm";
+    goalA.motion_plan_request.group_name = "left_arm";
+    //goalA.motion_plan_request.group_name = "right_arm";
     goalA.motion_plan_request.num_planning_attempts = 1;
     goalA.motion_plan_request.planner_id = std::string("");
     goalA.planner_service_name = std::string("ompl_planning/plan_kinematic_path");
@@ -69,8 +69,8 @@ int main(int argc, char** argv)
     arm_navigation_msgs::SimplePoseConstraint desired_pose;
     desired_pose.header.frame_id = "base_link";
     desired_pose.header.stamp = ros::Time::now();
-    //desired_pose.link_name = "l_wrist_roll_link";
-    desired_pose.link_name = "r_wrist_roll_link";
+    desired_pose.link_name = "l_wrist_roll_link";
+    //desired_pose.link_name = "r_wrist_roll_link";
 //	desired_pose.link_name = "r_gripper_palm_link";
     desired_pose.pose.position.x = atof(argv[1]); // = go_to;
     desired_pose.pose.position.y = atof(argv[2]);
@@ -81,10 +81,10 @@ int main(int argc, char** argv)
     	desired_pose.pose.position.y = -0.5;//-0.188;
     	desired_pose.pose.position.z = 0;
     */
-    desired_pose.pose.orientation.x = 0;
-    desired_pose.pose.orientation.y = 0;
-    desired_pose.pose.orientation.z = 0;
-    desired_pose.pose.orientation.w = 1;
+    desired_pose.pose.orientation.x = atof(argv[4]);
+    desired_pose.pose.orientation.y = atof(argv[5]);
+    desired_pose.pose.orientation.z = atof(argv[6]);
+    desired_pose.pose.orientation.w = atof(argv[7]);
 
     geometry_msgs::PoseStamped to_pub;
     to_pub.pose = desired_pose.pose;

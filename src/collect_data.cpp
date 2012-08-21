@@ -106,7 +106,7 @@ private:
     /****************** Filter out the non-table points ******************/
     //pass_through_gen(cloud,pcdFiltered,true,0,1,true,-0.32,0.32,true,1.012,1.3);   // Kinect and shelf
     //pass_through_gen(cloud,pcdFiltered,true,0,1,true,-0.32,0.32,true,1.07,1.3);    // Narrow stereo and shelf
-    pass_through_gen(cloud,pcdFiltered,true,0,1.4,true,-0.4,0.4,true,0.81,1.1);      // Narrow stereo and simulation table
+    pass_through_gen(cloud,pcdFiltered,true,0,1.4,true,-1.0,1.0,true,0.81,1.1);      // Narrow stereo and simulation table
     if (pcdFiltered->points.size() > 0) {
       new_data_wanted_ = false;
       toROSMsg(*pcdFiltered, topub);

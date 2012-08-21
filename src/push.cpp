@@ -55,14 +55,8 @@ public:
 		RIGHT_RESET.y = -0.7;  //-0.5
 		RIGHT_RESET.z = 1.1;   //1.0
 
-		default_orientation.x = 0.0;
-		default_orientation.y = 0.0;
-		default_orientation.z = 0.0;
-		default_orientation.w = 1.0;
-
 		active_arm_ = "left_arm";
 		active_arm_sym_ = 0;
-		active_reset_ = LEFT_RESET;
 
 		collision_map_pub_ = n_.advertise<arm_navigation_msgs::CollisionMap>("my_collision_map",1);
 
@@ -109,10 +103,8 @@ private:
 
 	geometry_msgs::Point LEFT_RESET;
 	geometry_msgs::Point RIGHT_RESET;
-	geometry_msgs::Point active_reset_;
 	std::string active_arm_;
 	int active_arm_sym_;
-	geometry_msgs::Quaternion default_orientation;
 
 	Gripper gripper_;
 
@@ -179,121 +171,58 @@ private:
 			        */
 
 			// 7. Push the closest object 2 cm behind
-			//ROS_INFO("Creating a collision operation");
+			ROS_INFO("Creating a collision operation");
 			//arm_navigation_msgs::CollisionOperation cop;
 			//collision_op("gripper", collision_names[closest], 0, 0.2, cop);
-			//collision_op("gripper", "temp", 0, 0.2, cop);   /// Temp hack
+			collision_op("gripper", "temp", 0, 0.2, cop);   /// Temp hack
 
 
-			geometry_msgs::Point contact_point, mid_point, final_point;
-			geometry_msgs::Quaternion gripper_orientation;
+			geometry_msgs::Point contact_point, final_point;
 			pcl::PointCloud<PointT> pcd;
 			//fromROSMsg(clusters_[closest], pcd);
 			fromROSMsg(clusters_[i], pcd);
+			ROS_INFO("Calculating the contact point and final point");
+			std::vector<geometry_msgs::Point> extents = find_extents(pcd);
+			contact_point.x = extents[0].x - 0.25;
+			contact_point.y = 0.5*(extents[3].y + extents[2].y);
+			//contact_point.z = extents[5].z - 0.02;
+			contact_point.z = 0.5*(extents[4].z + extents[5].z) - 0.01;
 
-	//		for (int j = 0; j < 2; j++) {
-	//			if (j == 1) {
-					active_arm_ = "right_arm";
-					active_arm_sym_ = 1;
-					active_reset_ = RIGHT_RESET;
-	//			}
-				for (int t = 0; t < 3; t++) {
-					/// 0: push_back, 1: push_left, 2:push_right
-					find_contact_pose(pcd, t, contact_point, mid_point, final_point, gripper_orientation);
+			final_point = contact_point;
+			final_point.x+= 0.1;
+			ROS_INFO("Contact Point = %f, %f, %f \t Final point = %f, %f, %f",
+			         contact_point.x, contact_point.y, contact_point.z,
+			         final_point.x, final_point.y, final_point.z);
 
-					target_object_pub_.publish(clusters_[i]);
+			geometry_msgs::PoseStamped topub;
+			topub.header.frame_id = "base_link";
+			topub.header.stamp = ros::Time::now();
+			topub.pose.orientation.x = 0.0;
+			topub.pose.orientation.y = 0.0;
+			topub.pose.orientation.z = 0.0;
+			topub.pose.orientation.w = 1.0;
+			topub.pose.position = contact_point;
+			contact_point_pub_.publish(topub);
+			topub.pose.position = final_point;
+			final_point_pub_.publish(topub);
 
-					gripper_.open(active_arm_sym_, 0.03);
-					ROS_INFO("Calling move arm");
-					if (!move_arm(contact_point, active_arm_, active_arm_sym_, 100, 0, gripper_orientation)) {
-						///Arm motion to contact point succeeded
-						if (!move_arm(mid_point, active_arm_, active_arm_sym_, i, 0,gripper_orientation)) { //add allowed collision region
-							if (!move_arm(final_point, active_arm_, active_arm_sym_, i, 0, gripper_orientation)) { //add allowed collision region
-								///Arm motion to final point succeeded
-								//move_arm(contact_point, active_arm_, active_arm_sym_, i, 0);
-							}
-						}
-						//move_arm(RIGHT_RESET, "right_arm", 1, cop);
-					}
-					///move_arm(go_to, arm_name, arm_symbol, cluster_id, cluster_op, desired_orientation)
-					move_arm(active_reset_, active_arm_, active_arm_sym_, i, 0, default_orientation); //remove allowed collision region
-					move_arm(active_reset_, active_arm_, active_arm_sym_, i, 1, default_orientation);
+			target_object_pub_.publish(clusters_[i]);
+
+			gripper_.open();
+			ROS_INFO("Calling move arm");
+			if (!move_arm(contact_point, active_arm_, active_arm_sym_, 100, 0)) {
+				///Arm motion to contact point succeeded
+				if (!move_arm(final_point, active_arm_, active_arm_sym_, i, 0)) { //add allowed collision region
+					///Arm motion to final point succeeded
+					move_arm(contact_point, active_arm_, active_arm_sym_, i, 0);
 				}
-			//}
+				//move_arm(RIGHT_RESET, "right_arm", 1, cop);
+			}
+			move_arm(LEFT_RESET, "left_arm", 0, i, 1); //remove allowed collision region
 		}
 		//move_arm(LEFT_RESET, "left_arm", 0, cop, i);
 		//move_arm(RIGHT_RESET, "right_arm", 1, cop, 100);
 		ROS_INFO("Exiting callback");
-	}
-
-	void find_contact_pose(pcl::PointCloud<PointT> pcd, int push_direction,
-	                       geometry_msgs::Point& contact_point, geometry_msgs::Point& mid_point,
-	                       geometry_msgs::Point& final_point, geometry_msgs::Quaternion& gripper_orientation) {
-		ROS_INFO("Calculating the contact point and final point");
-		std::vector<geometry_msgs::Point> extents = find_extents(pcd);
-		gripper_orientation = default_orientation;
-
-		//if (strcmp(push_direction, "push_back") == 0) {
-		if (push_direction == 0) {
-			contact_point.x = extents[0].x - 0.25;
-			contact_point.y = 0.5*(extents[3].y + extents[2].y);
-			//contact_point.z = extents[5].z - 0.02;
-			contact_point.z = 0.5*(extents[4].z + extents[5].z);
-
-			mid_point = contact_point;
-			mid_point.x+= 0.06;
-
-			final_point = contact_point;
-			final_point.x+= 0.15;
-
-		} else if (push_direction == 1) {
-			//(strcmp(push_direction,"push_left") == 0) {
-			contact_point.x = 0.5*(extents[0].x + extents[1].x);
-			contact_point.y = extents[2].y - 0.25;
-			//contact_point.z = extents[5].z - 0.02;
-			contact_point.z = 0.5*(extents[4].z + extents[5].z);
-
-			mid_point = contact_point;
-			mid_point.y+= 0.06;
-
-			final_point = contact_point;
-			final_point.y+= 0.15;
-
-			gripper_orientation.x = 1.0;
-			gripper_orientation.y = 1.0;
-			gripper_orientation.w = 0.0;
-
-		} else if (push_direction == 2) {
-			//(strcmp(push_direction, "push_right") == 0) {
-			contact_point.x = 0.5*(extents[0].x + extents[1].x);
-			contact_point.y = extents[3].y + 0.25;
-			//contact_point.z = extents[5].z - 0.02;
-			contact_point.z = 0.5*(extents[4].z + extents[5].z);
-
-			mid_point = contact_point;
-			mid_point.y-= 0.06;
-
-			final_point = contact_point;
-			final_point.y-= 0.15;
-
-			gripper_orientation.x = 1.0;
-			gripper_orientation.y = -1.0;
-			gripper_orientation.w = 0.0;
-		}
-
-		ROS_INFO("Contact Point = %f, %f, %f \t Final point = %f, %f, %f",
-		         contact_point.x, contact_point.y, contact_point.z,
-		         final_point.x, final_point.y, final_point.z);
-
-		geometry_msgs::PoseStamped topub;
-		topub.header.frame_id = "base_link";
-		topub.header.stamp = ros::Time::now();
-		topub.pose.orientation = gripper_orientation;
-
-		topub.pose.position = contact_point;
-		contact_point_pub_.publish(topub);
-		topub.pose.position = final_point;
-		final_point_pub_.publish(topub);
 	}
 
 	geometry_msgs::Point find_centroid(pcl::PointCloud<PointT> pcd) {
@@ -397,8 +326,7 @@ private:
 	}
 
 	int move_arm(geometry_msgs::Point go_to, std::string arm_name, int arm_symbol,
-	             int cluster_id, int cluster_op,
-	             geometry_msgs::Quaternion desired_orientation) {
+	             int cluster_id, int cluster_op) {
 		ROS_INFO("Inside move arm");
 		//if (std::strcmp(arm_name, "right_arm")
 		std::stringstream ss1, ss2;
@@ -413,7 +341,7 @@ private:
 
 		ROS_INFO("Creating move arm goal");
 		goalA.motion_plan_request.group_name = arm_name;
-		goalA.motion_plan_request.num_planning_attempts = 2;
+		goalA.motion_plan_request.num_planning_attempts = 5;
 		goalA.motion_plan_request.planner_id = std::string("");
 		goalA.planner_service_name = std::string("ompl_planning/plan_kinematic_path");
 		goalA.motion_plan_request.allowed_planning_time = ros::Duration(5.0);
@@ -436,7 +364,7 @@ private:
 			//arm_navigation_msgs::Shape::CYLINDER;
 			object.dimensions.resize(3);
 			object.dimensions[0] = bboxes_[cluster_id].dimensions.x + 0.1; // need large padding in x direction if push is in x direction bcoz after push the hand will be in collision
-			object.dimensions[1] = bboxes_[cluster_id].dimensions.y + 0.1;
+			object.dimensions[1] = bboxes_[cluster_id].dimensions.y + 0.04;
 			object.dimensions[2] = bboxes_[cluster_id].dimensions.z + 0.02;
 			co.shapes.push_back(object);
 
@@ -446,7 +374,6 @@ private:
 			if (cluster_op == 0) {
 				arm_navigation_msgs::CollisionOperation cop2;
 				cop2.object1 = cop2.COLLISION_SET_ALL;
-				///Setting object1 to "gripper" does not work
 				//cop2.object1 = "gripper";
 				cop2.object2 = collision_names_[cluster_id];
 				cop2.operation = cop2.DISABLE;    //0 = Disable, 1 = Enable
@@ -464,14 +391,11 @@ private:
 		else
 			desired_pose.link_name = "r_wrist_roll_link";
 		desired_pose.pose.position = go_to;
-		desired_pose.pose.orientation = desired_orientation;
 
-		/*
 		desired_pose.pose.orientation.x = 0;
 		desired_pose.pose.orientation.y = 0;
 		desired_pose.pose.orientation.z = 0;
 		desired_pose.pose.orientation.w = 1;
-		*/
 
 		desired_pose.absolute_position_tolerance.x = 0.02;
 		desired_pose.absolute_position_tolerance.y = 0.02;
@@ -485,7 +409,7 @@ private:
 
 		bool finished_within_time = false;
 		move_arm.sendGoal(goalA);
-		finished_within_time = move_arm.waitForResult(ros::Duration(10.0));
+        finished_within_time = move_arm.waitForResult(ros::Duration(10.0));
 		if (!finished_within_time) {
 			move_arm.cancelGoal();
 			ROS_INFO("Timed out achieving goal A");
@@ -800,5 +724,4 @@ bool collision_obj(std::string id, int operation, geometry_msgs::Pose pose,
    return -1;
  }
  */
-
 

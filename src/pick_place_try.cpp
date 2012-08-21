@@ -135,6 +135,7 @@ private:
     object_manipulation_msgs::GraspableObject target_graspable_object_;
     std::string target_collision_name_;
     object_manipulation_msgs::PickupResult pickup_result_;
+    geometry_msgs::PoseStamped pickup_location_;
 
     geometry_msgs::Point LEFT_RESET;
     geometry_msgs::Point RIGHT_RESET;
@@ -163,6 +164,7 @@ private:
             ROS_INFO("Finding bounding box of cluster %zu", i+1);
             object_manipulation_msgs::ClusterBoundingBox bbx;
             getClusterBoundingBox(clusters_[i], bbx.pose_stamped, bbx.dimensions);
+            pickup_location_ = bbx.pose_stamped;
 
             // 3. Add this bounding box as a collision object
             ROS_INFO("Adding a collision object for cluster %zu", i+1);
@@ -332,12 +334,12 @@ private:
 
     bool place() {
         /// create a place location, offset by 10 cm from the pickup location
-        geometry_msgs::PoseStamped place_location;
+        geometry_msgs::PoseStamped place_location = pickup_location_;
         place_location.header.frame_id = target_graspable_object_.reference_frame_id;
         /// identity pose
         place_location.pose.orientation.w = 1;
         place_location.header.stamp = ros::Time::now();
-        place_location.pose.position.y -= 0.1;
+        place_location.pose.position.y -= 0.05;
 
         /// put the object down
         ROS_INFO("Calling the place action");
