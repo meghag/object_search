@@ -8,7 +8,7 @@
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
   <url>http://ros.org/wiki/tum_os</url>
-  
+
   <depend package="std_msgs"/>
   <depend package="roscpp"/>
   <depend package="rospy"/>
@@ -19,6 +19,10 @@
   <depend package="pcl"/>
   <depend package="pcl_ros"/>
   <depend package="gazebo_plugins"/>
+  <depend package="object_manipulation_msgs"/>
+  <depend package="arm_navigation_msgs"/>
+  <depend package="actionlib"/>
+  <depend package="pr2_controllers_msgs"/>
 
 </package>
 

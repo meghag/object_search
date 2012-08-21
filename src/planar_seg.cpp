@@ -3,17 +3,20 @@
 using namespace std;
 using namespace pcl;
 
-int planar_seg(pcl::PointCloud<pcl::PointXYZRGB>::Ptr orig_cloud, 
-               pcl::PointCloud<pcl::PointXYZRGB>::Ptr p_cloud, 
-               pcl::PointCloud<pcl::PointXYZRGB>::Ptr o_cloud,
+//typedef pcl::PointXYZRGB PointT;
+typedef pcl::PointXYZ PointT;
+
+int planar_seg(pcl::PointCloud<PointT>::Ptr orig_cloud,
+               pcl::PointCloud<PointT>::Ptr p_cloud,
+               pcl::PointCloud<PointT>::Ptr o_cloud,
                string fname1, string fname2)
-{	
+{
   /******************** Planar Segmentation ***************************/
-  
+
   pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients ());
   pcl::PointIndices::Ptr inliers (new pcl::PointIndices ());
   // Create the segmentation object
-  pcl::SACSegmentation<pcl::PointXYZRGB> seg;
+  pcl::SACSegmentation<PointT> seg;
   //PCDWriter writer;
   // Optional
   seg.setOptimizeCoefficients (true);
@@ -23,8 +26,8 @@ int planar_seg(pcl::PointCloud<pcl::PointXYZRGB>::Ptr orig_cloud,
   seg.setDistanceThreshold (0.01);
 
   // Create the filtering object
-  pcl::ExtractIndices<pcl::PointXYZRGB> extract;
-  
+  pcl::ExtractIndices<PointT> extract;
+
   seg.setInputCloud (orig_cloud);
   seg.segment (*inliers, *coefficients);
 
@@ -41,7 +44,7 @@ int planar_seg(pcl::PointCloud<pcl::PointXYZRGB>::Ptr orig_cloud,
     extract.filter (*p_cloud);
     std::cerr << "PointCloud representing the planar component: " << p_cloud->width * p_cloud->height << " data points." << std::endl;
 
-    
+
     // Create the filtering object
     extract.setNegative (true);
     extract.filter (*o_cloud);
@@ -53,6 +56,6 @@ int planar_seg(pcl::PointCloud<pcl::PointXYZRGB>::Ptr orig_cloud,
 
   //for (size_t i = 0; i < cloud.points.size (); ++i)
   //  std::cerr << "    " << cloud.points[i].x << " " << cloud.points[i].y << " " << cloud.points[i].z << std::endl;
-    
+
   return (0);
 }

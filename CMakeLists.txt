@@ -17,7 +17,7 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 #uncomment if you have defined messages
-#rosbuild_genmsg()
+rosbuild_genmsg()
 #uncomment if you have defined services
 #rosbuild_gensrv()
 
@@ -29,6 +29,28 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 #rosbuild_add_executable(example examples/example.cpp)
 #target_link_libraries(example ${PROJECT_NAME})
 
-rosbuild_add_executable(collect_data src/collect_data.cpp src/planar_seg.cpp src/pass_through_gen.cpp)
-rosbuild_add_executable(cylinder_seg src/extract_cylinders_from_pcd.cpp)
-rosbuild_add_executable(color_seg src/extract_color_clusters_from_pcd.cpp src/extract_color_clusters.cpp)
+#rosbuild_add_library(${PROJECT_NAME} src/set_marker.cpp)
+
+rosbuild_add_executable(collect_data src/collect_data.cpp
+				src/planar_seg.cpp
+				src/pass_through_gen.cpp)
+#rosbuild_add_executable(cylinder_seg src/cylindrical_segmentation.cpp)
+rosbuild_add_executable(euclidean_seg src/euclidean_segmentation.cpp)
+
+rosbuild_add_executable(color_seg src/color_segmentation.cpp)
+
+#rosbuild_add_executable(post_seg src/post_segmentation.cpp
+#				src/find_extents.cpp
+#				src/set_marker.cpp
+#				src/find_centroid.cpp)
+
+rosbuild_add_executable(pp_try src/pick_place_try.cpp)
+rosbuild_add_executable(push_try src/push_try.cpp src/find_extents.cpp)
+
+rosbuild_add_executable(move_right_arm src/move_right_arm.cpp)
+rosbuild_add_executable(move_left_arm src/move_left_arm.cpp)
+rosbuild_add_executable(move_elbow src/move_elbow.cpp)
+rosbuild_add_executable(arm_test src/move_arm.cpp)
+
+rosbuild_add_executable(move_head_manual src/move_head_manual.cpp)
+

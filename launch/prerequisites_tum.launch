@@ -1,0 +1,20 @@
+<launch>
+  <!-- set stereo to true for narrow stereo, false for kinect -->
+  <arg name="stereo" default="true" />
+  <arg name="use_slip_controllers" default="false"/>
+
+  <!-- manipulation prerequisites -->
+  <include file="$(find pr2_object_manipulation_launch)/launch/pr2_manipulation_prerequisites.launch">
+    <arg name="stereo" value="$(arg stereo)"/>
+  </include>
+
+  <!-- manipulation -->
+  <include file="$(find pr2_object_manipulation_launch)/launch/pr2_manipulation.launch">
+    <arg name="use_slip_controllers" value="$(arg use_slip_controllers)"/>
+  </include>
+  <param name="/object_manipulator/default_database_planner"
+         value="/objects_database_node/database_grasp_planning" />
+  <param name="/object_manipulator/default_robust_planner"
+         value="/plan_robust_grasp" />
+
+</launch>

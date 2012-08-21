@@ -7,20 +7,22 @@
 using namespace std;
 using namespace pcl;
 
-//template<class T>
-std::vector<geometry_msgs::Point> find_extents(pcl::PointCloud<PointXYZRGB> pcd)
-{ 
+//typedef pcl::PointXYZRGB PointT;
+typedef pcl::PointXYZ PointT;
+
+std::vector<geometry_msgs::Point> find_extents(pcl::PointCloud<PointT> pcd)
+{
 	ROS_INFO("Inside find_extents");
 	vector<double> vecx, vecy, vecz;
 	//float minx, miny, minz, maxx, maxy, maxz;
-	for (std::vector<PointXYZRGB, Eigen::aligned_allocator<PointXYZRGB> >::iterator it1 = pcd.points.begin(); it1 != pcd.points.end(); ++it1) {
+	for (std::vector<PointT, Eigen::aligned_allocator<PointT> >::iterator it1 = pcd.points.begin(); it1 != pcd.points.end(); ++it1) {
 		//cout << "cluster " << j << ": x = " << it1->x << " y = " << it1->y << " z = " << it1->z << endl;
 		vecx.push_back(it1->x);
 		vecy.push_back(it1->y);
 		vecz.push_back(it1->z);
 	}
 
-	//vector<PointXYZRGB, Eigen::aligned_allocator<PointXYZRGB> >::iterator it_minx, it_miny, it_minz, 
+	//vector<PointT, Eigen::aligned_allocator<PointT> >::iterator it_minx, it_miny, it_minz,
 	//it_maxx, it_maxy, it_maxz;
 	vector<double>::iterator it_minx, it_miny, it_minz, it_maxx, it_maxy, it_maxz;
 	it_minx = min_element(vecx.begin(), vecx.end());
@@ -31,9 +33,9 @@ std::vector<geometry_msgs::Point> find_extents(pcl::PointCloud<PointXYZRGB> pcd)
 	it_maxz = max_element(vecz.begin(), vecz.end());
 
 	//float dim1, dim2, dim3;
-	PointXYZRGB pt_minx, pt_miny, pt_minz, pt_maxx, pt_maxy, pt_maxz;
-	vector<PointXYZRGB, Eigen::aligned_allocator<PointXYZRGB> >::iterator it2 = pcd.points.begin();
-	
+	PointT pt_minx, pt_miny, pt_minz, pt_maxx, pt_maxy, pt_maxz;
+	vector<PointT, Eigen::aligned_allocator<PointT> >::iterator it2 = pcd.points.begin();
+
 	for (vector<double>::iterator pos = vecx.begin(); pos != vecx.end(); ++pos) {
 		if (pos == it_minx){
 			pt_minx = *it2;
@@ -85,7 +87,7 @@ std::vector<geometry_msgs::Point> find_extents(pcl::PointCloud<PointXYZRGB> pcd)
 	vertices[5].x = pt_maxz.x;
 	vertices[5].y = pt_maxz.y;
 	vertices[5].z = pt_maxz.z;
-		
+
 	std::vector<geometry_msgs::Point> extent;
 	for (int i =0; i<6; i++)
 		extent.push_back(vertices[i]);

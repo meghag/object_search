@@ -1,3 +1,14 @@
+/*********************************************
+This program reads in a point cloud from the specified pcd file 
+and extracts all cylinders out of it iteratively. Not working well.
+Only the first cylinder is created correctly.
+
+Date created: July 23, 2012
+Author: Megha Gupta
+
+***********************************************/
+
+
 #include <ros/ros.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
@@ -14,9 +25,10 @@ typedef pcl::PointXYZRGB PointT;
 
 int main (int argc, char** argv)
 {
-  pcl::PointCloud<pcl::PointXYZRGB>::Ptr object_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+  pcl::PointCloud<PointT>::Ptr object_cloud (new pcl::PointCloud<PointT>);
 
-  if (pcl::io::loadPCDFile<pcl::PointXYZRGB> (argv[1], *object_cloud) == -1) //* load the file
+  if (pcl::io::loadPCDFile<PointT> (argv[1], *object_cloud) == -1) 
+    // load the file
   {
     PCL_ERROR ("Couldn't read file \n");
     return (-1);
@@ -27,6 +39,7 @@ int main (int argc, char** argv)
   pcl::ExtractIndices<PointT> extract;
   pcl::ExtractIndices<pcl::Normal> extract_normals;
   pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
+  //pcl::KdTree<PointT>::Ptr tree (new pcl::KdTree<PointT> ());
   pcl::NormalEstimation<PointT, pcl::Normal> ne;
   pcl::PointCloud<pcl::Normal>::Ptr cloud_normals (new pcl::PointCloud<pcl::Normal>);
   pcl::SACSegmentationFromNormals<PointT, pcl::Normal> seg; 
