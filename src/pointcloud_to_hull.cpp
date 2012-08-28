@@ -8,6 +8,15 @@
 #include <pcl_ros/transforms.h>
 
 #include <pcl/filters/extract_indices.h>
+#include <pcl/ModelCoefficients.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl/filters/project_inliers.h>
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/surface/concave_hull.h>
 
 std::string fixed_frame_ = "map";
 std::string mount_frame_ = "head_mount_link";
@@ -22,6 +31,44 @@ void init()
         listener_ = new tf::TransformListener();
 }
 
+tf::Stamped<tf::Pose> getPoseIn(const char target_frame[], tf::Stamped<tf::Pose>src)
+{
+
+    if (src.frame_id_ == "NO_ID_STAMPED_DEFAULT_CONSTRUCTION")
+    {
+        ROS_ERROR("Frame not in TF: %s", src.frame_id_.c_str());
+        tf::Stamped<tf::Pose> pose;
+        return pose;
+    }
+
+    if (!listener_)
+        listener_ = new tf::TransformListener(ros::Duration(30));
+
+    tf::Stamped<tf::Pose> transform;
+    //this shouldnt be here TODO
+    //src.stamp_ = ros::Time(0);
+
+    listener_->waitForTransform(src.frame_id_, target_frame,
+                                ros::Time(0), ros::Duration(30.0));
+    bool transformOk = false;
+    while (!transformOk)
+    {
+        try
+        {
+            transformOk = true;
+            listener_->transformPose(target_frame, src, transform);
+        }
+        catch (tf::TransformException ex)
+        {
+            ROS_ERROR("getPoseIn %s",ex.what());
+            // dirty:
+            src.stamp_ = ros::Time(0);
+            transformOk = false;
+        }
+        ros::spinOnce();
+    }
+    return transform;
+}
 
 tf::Stamped<tf::Pose> getPose(const char target_frame[],const char lookup_frame[], ros::Time tm = ros::Time(0))
 {
@@ -142,13 +189,13 @@ void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZ
         ros::NodeHandle node_handle;
 
         cloud_pub = new ros::Publisher();
-        *cloud_pub = node_handle.advertise<sensor_msgs::PointCloud2>("/debug_cloud",0,true);
+        *cloud_pub = node_handle.advertise<sensor_msgs::PointCloud2>(topic_name,0,true);
 
         cloud_publishers.insert(std::pair<std::string, ros::Publisher*>(topic_name, cloud_pub ));
         std::cout << "created new publisher" << cloud_pub << std::endl;
     } else {
         cloud_pub = cloud_publishers.find(topic_name)->second;
-        std::cout << "found pub, reusing" << cloud_pub << std::endl;
+        std::cout << "found pub on " << cloud_pub->getTopic() << ", reusing it" << std::endl;
     }
 
     sensor_msgs::PointCloud2 out; //in map frame
@@ -162,12 +209,77 @@ void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZ
 
 }
 
+void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_projected)
+//(tf::Vector3 planeNormal, double planeDist,
+{
+  double dist_to_sensor = 1;
+
+  pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
+
+  pcl::PointCloud<pcl::PointXYZRGB>::Ptr plane_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+  pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+  // construct a plane parallel to the camera sensor
+  tf::Stamped<tf::Pose> planePoint;
+  // should work with three points but strangely doesnt
+  int numpoints = 10;
+  for (int i = 0; i < numpoints ; ++i ) {
+    planePoint.frame_id_ = rgb_optical_frame_;
+    planePoint.stamp_ = ros::Time(0);
+    planePoint.setOrigin(tf::Vector3(dist_to_sensor,sin(i*(360 / numpoints )* M_PI / 180.0f),cos(i*(360 / numpoints )* M_PI / 180.0f)));
+    planePoint.setRotation(tf::Quaternion(0,0,0,1));
+    planePoint = getPoseIn(fixed_frame_.c_str(), planePoint);
+
+    pcl::PointXYZRGB planePt;
+    planePt.x = planePoint.getOrigin().x();
+    planePt.y = planePoint.getOrigin().y();
+    planePt.z = planePoint.getOrigin().z();
+    plane_cloud->points.push_back(planePt);
+    inliers->indices.push_back(i);
+  }
+
+
+  //we abuse pcl plane model
+  //pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
+
+  // Create the segmentation object
+  pcl::SACSegmentation<pcl::PointXYZRGB> seg;
+  // Optional
+  seg.setOptimizeCoefficients (true);
+  // Mandatory
+  seg.setModelType (pcl::SACMODEL_PLANE);
+  seg.setMethodType (pcl::SAC_RANSAC);
+  seg.setDistanceThreshold (0.01);
+
+  seg.setInputCloud (plane_cloud);
+
+  seg.segment (*inliers, *coefficients);
+  std::cerr << "PointCloud after segmentation has: "
+            << inliers->indices.size () << " inliers." << std::endl;
+
+
+  std::cout << "Model coefficients: " << coefficients->values[0] << " "
+                                      << coefficients->values[1] << " "
+                                      << coefficients->values[2] << " "
+                                      << coefficients->values[3] << std::endl;
+
+  pcl::ProjectInliers<pcl::PointXYZRGB> proj;
+  proj.setModelType (pcl::SACMODEL_PLANE);
+  proj.setInputCloud (cloud);
+  proj.setModelCoefficients (coefficients);
+  proj.filter (*cloud_projected);
+  std::cerr << "PointCloud after projection has: "
+            << cloud_projected->points.size () << " data points." << std::endl;
+
+  pubCloud("cloud_projected", cloud_projected);
+}
+
 
 void test_hull_calc()
 {
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZRGB>);
 
     cloud_in_box->width = 0; cloud_in_box->height = 0;
 
@@ -179,6 +291,8 @@ void test_hull_calc()
     tf::Vector3 bb_max(-1.6,1.9,1.2);
 
     getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
+
+    projectToPlane(cloud_in_box, cloud_in_box_projected);
 
     //tf::Vector3 center = (bb_min + bb_max) * .5;
     //pcl::PointXYZRGB centerpoint;
