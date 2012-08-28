@@ -36,6 +36,10 @@ std::vector<geometry_msgs::Point> find_extents(pcl::PointCloud<PointT> pcd)
 	PointT pt_minx, pt_miny, pt_minz, pt_maxx, pt_maxy, pt_maxz;
 	vector<PointT, Eigen::aligned_allocator<PointT> >::iterator it2 = pcd.points.begin();
 
+	//TODO: we could use size_t indes= std::distance(vecx.begin(), it_minx); to get an index from the iterators
+	// this would be safer as there might be multiple points with the same coordinates in some component of the vector
+	// and it would also safe some time
+
 	for (vector<double>::iterator pos = vecx.begin(); pos != vecx.end(); ++pos) {
 		if (pos == it_minx){
 			pt_minx = *it2;
