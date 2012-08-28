@@ -224,8 +224,10 @@ void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
   int numpoints = 10;
   for (int i = 0; i < numpoints ; ++i ) {
     planePoint.frame_id_ = rgb_optical_frame_;
+    //planePoint.frame_id_ = fixed_frame_;
     planePoint.stamp_ = ros::Time(0);
     planePoint.setOrigin(tf::Vector3(dist_to_sensor,sin(i*(360 / numpoints )* M_PI / 180.0f),cos(i*(360 / numpoints )* M_PI / 180.0f)));
+    //planePoint.setOrigin(tf::Vector3(sin(i*(360 / numpoints )* M_PI / 180.0f),cos(i*(360 / numpoints )* M_PI / 180.0f),1.0));
     planePoint.setRotation(tf::Quaternion(0,0,0,1));
     planePoint = getPoseIn(fixed_frame_.c_str(), planePoint);
 
@@ -271,6 +273,26 @@ void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
             << cloud_projected->points.size () << " data points." << std::endl;
 
   pubCloud("cloud_projected", cloud_projected);
+
+}
+
+void calcHull(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_hull)
+{
+
+  // Create a Concave Hull representation of the projected inliers
+  //pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_hull (new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::ConcaveHull<pcl::PointXYZRGB> chull;
+  chull.setInputCloud (cloud);
+  chull.setAlpha (0.1);
+  chull.reconstruct (*cloud_hull);
+
+  std::cerr << "Concave hull has: " << cloud_hull->points.size ()
+            << " data points." << std::endl;
+
+  pubCloud("cloud_hull", cloud_hull);
+
+  //pcl::PCDWriter writer;
+  //writer.write ("table_scene_mug_stereo_textured_hull.pcd", *cloud_hull, false);
 }
 
 
@@ -280,6 +302,7 @@ void test_hull_calc()
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected_hull (new pcl::PointCloud<pcl::PointXYZRGB>);
 
     cloud_in_box->width = 0; cloud_in_box->height = 0;
 
@@ -294,6 +317,8 @@ void test_hull_calc()
 
     projectToPlane(cloud_in_box, cloud_in_box_projected);
 
+    calcHull(cloud_in_box_projected, cloud_in_box_projected_hull);
+
     //tf::Vector3 center = (bb_min + bb_max) * .5;
     //pcl::PointXYZRGB centerpoint;
     //centerpoint.x = center.x();
@@ -304,6 +329,9 @@ void test_hull_calc()
     pubCloud("debug_cloud", cloud_in_box);
 
 }
+
+
+
 
 int main(int argc,char **argv)
 {
