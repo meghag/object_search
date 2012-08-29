@@ -19,6 +19,7 @@
 #include <pcl/surface/concave_hull.h>
 
 std::string fixed_frame_ = "map";
+//std::string fixed_frame_ = "head_mount_kinect_ir_link";//"map";
 std::string mount_frame_ = "head_mount_link";
 std::string rgb_optical_frame_ = "head_mount_kinect_ir_link";
 std::string rgb_topic_ = "/head_mount_kinect/depth_registered/points";
@@ -114,7 +115,6 @@ tf::Stamped<tf::Pose> getPose(const char target_frame[],const char lookup_frame[
 }
 
 
-
 void getCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, std::string frame_id, ros::Time after, ros::Time *tm)
 {
 
@@ -146,37 +146,10 @@ void getCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, std::string frame_id
     geometry_msgs::Transform t_msg;
     tf::transformTFToMsg(net_transform, t_msg);
 
-    //std::cout << "CLOUD transf" << pc.header.frame_id << " to " << pct.header.frame_id << " : " << t_msg << std::endl;
+    std::cout << "CLOUD transf " << pc.header.frame_id << " to " << pct.header.frame_id << " : " << t_msg << std::endl;
 
     pcl::fromROSMsg(pct, *cloud);
 }
-
-void getPointsInBox(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr inBox, const tf::Vector3 min, const tf::Vector3 max)
-{
-    Eigen::Vector4f min_pt, max_pt;
-
-    min_pt = Eigen::Vector4f(std::min(min.x(), max.x()),std::min(min.y(), max.y()),std::min(min.z(), max.z()), 1);
-    max_pt = Eigen::Vector4f(std::max(min.x(), max.x()),std::max(min.y(), max.y()),std::max(min.z(), max.z()), 1);
-
-    ROS_INFO("min %f %f %f" ,min_pt[0],min_pt[1],min_pt[2]);
-    ROS_INFO("max %f %f %f" ,max_pt[0],max_pt[1],max_pt[2]);
-
-    ROS_INFO("cloud size : %zu", cloud->points.size());
-
-    boost::shared_ptr<std::vector<int> > indices( new std::vector<int> );
-
-    pcl::getPointsInBox(*cloud,min_pt,max_pt,*indices);
-
-    std::cout << "idx size" << indices->size() << std::endl;
-
-    pcl::ExtractIndices<pcl::PointXYZRGB> ei;
-    ei.setInputCloud(cloud);
-    ei.setIndices(indices);
-    ei.filter(*inBox);
-
-    ROS_INFO("cloud size after box filtering: %zu = %i * %i", inBox->points.size(), inBox->width, inBox->height);
-}
-
 
 std::map<std::string, ros::Publisher*> cloud_publishers;
 
@@ -192,10 +165,10 @@ void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZ
         *cloud_pub = node_handle.advertise<sensor_msgs::PointCloud2>(topic_name,0,true);
 
         cloud_publishers.insert(std::pair<std::string, ros::Publisher*>(topic_name, cloud_pub ));
-        std::cout << "created new publisher" << cloud_pub << std::endl;
+        //std::cout << "created new publisher" << cloud_pub << std::endl;
     } else {
         cloud_pub = cloud_publishers.find(topic_name)->second;
-        std::cout << "found pub on " << cloud_pub->getTopic() << ", reusing it" << std::endl;
+        //std::cout << "found pub on " << cloud_pub->getTopic() << ", reusing it" << std::endl;
     }
 
     sensor_msgs::PointCloud2 out; //in map frame
@@ -205,14 +178,44 @@ void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZ
     out.header.stamp = ros::Time::now();
     cloud_pub->publish(out);
 
-    ROS_INFO("published frame %s %i x %i points on %s", out.header.frame_id.c_str(), out.height, out.width, topic_name.c_str());
+    //ROS_INFO("published frame %s %i x %i points on %s", out.header.frame_id.c_str(), out.height, out.width, topic_name.c_str());
 
 }
+
+void getPointsInBox(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr inBox, const tf::Vector3 min, const tf::Vector3 max)
+{
+    Eigen::Vector4f min_pt, max_pt;
+
+    min_pt = Eigen::Vector4f(std::min(min.x(), max.x()),std::min(min.y(), max.y()),std::min(min.z(), max.z()), 1);
+    max_pt = Eigen::Vector4f(std::max(min.x(), max.x()),std::max(min.y(), max.y()),std::max(min.z(), max.z()), 1);
+
+    //ROS_INFO("min %f %f %f" ,min_pt[0],min_pt[1],min_pt[2]);
+    //ROS_INFO("max %f %f %f" ,max_pt[0],max_pt[1],max_pt[2]);
+
+    //ROS_INFO("cloud size : %zu", cloud->points.size());
+
+    boost::shared_ptr<std::vector<int> > indices( new std::vector<int> );
+
+    pcl::getPointsInBox(*cloud,min_pt,max_pt,*indices);
+
+    //std::cout << "idx size" << indices->size() << std::endl;
+
+    pcl::ExtractIndices<pcl::PointXYZRGB> ei;
+    ei.setInputCloud(cloud);
+    ei.setIndices(indices);
+    ei.filter(*inBox);
+
+    pubCloud("debug_cloud", inBox);
+
+    ROS_INFO("cloud size after box filtering: %zu = %i * %i", inBox->points.size(), inBox->width, inBox->height);
+}
+
+double dist_to_sensor = 1;
 
 void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_projected)
 //(tf::Vector3 planeNormal, double planeDist,
 {
-  double dist_to_sensor = 1;
+
 
   pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
 
@@ -226,6 +229,7 @@ void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
     planePoint.frame_id_ = rgb_optical_frame_;
     //planePoint.frame_id_ = fixed_frame_;
     planePoint.stamp_ = ros::Time(0);
+    //planePoint.setOrigin(tf::Vector3(dist_to_sensor,sin(i*(360 / numpoints )* M_PI / 180.0f),cos(i*(360 / numpoints )* M_PI / 180.0f)));
     planePoint.setOrigin(tf::Vector3(dist_to_sensor,sin(i*(360 / numpoints )* M_PI / 180.0f),cos(i*(360 / numpoints )* M_PI / 180.0f)));
     //planePoint.setOrigin(tf::Vector3(sin(i*(360 / numpoints )* M_PI / 180.0f),cos(i*(360 / numpoints )* M_PI / 180.0f),1.0));
     planePoint.setRotation(tf::Quaternion(0,0,0,1));
@@ -235,10 +239,11 @@ void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
     planePt.x = planePoint.getOrigin().x();
     planePt.y = planePoint.getOrigin().y();
     planePt.z = planePoint.getOrigin().z();
+
+    //std::cout << i<< planePt.x << " " << planePt.y << " " << planePt.z << std::endl;
     plane_cloud->points.push_back(planePt);
     inliers->indices.push_back(i);
   }
-
 
   //we abuse pcl plane model
   //pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
@@ -251,9 +256,7 @@ void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
   seg.setModelType (pcl::SACMODEL_PLANE);
   seg.setMethodType (pcl::SAC_RANSAC);
   seg.setDistanceThreshold (0.01);
-
   seg.setInputCloud (plane_cloud);
-
   seg.segment (*inliers, *coefficients);
   std::cerr << "PointCloud after segmentation has: "
             << inliers->indices.size () << " inliers." << std::endl;
@@ -281,13 +284,49 @@ void calcHull(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointClo
 
   // Create a Concave Hull representation of the projected inliers
   //pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_hull (new pcl::PointCloud<pcl::PointXYZ>);
+
+  bool done = false;
+
+  tf::Stamped<tf::Pose> net_stamped = getPose(rgb_optical_frame_.c_str(),fixed_frame_.c_str());
+  tf::Transform fixed_to_sensor;
+  fixed_to_sensor.setOrigin(net_stamped.getOrigin());
+  fixed_to_sensor.setRotation(net_stamped.getRotation());
+
+  net_stamped = getPose(fixed_frame_.c_str(),rgb_optical_frame_.c_str());
+  tf::Transform sensor_to_fixed;
+  sensor_to_fixed.setOrigin(net_stamped.getOrigin());
+  sensor_to_fixed.setRotation(net_stamped.getRotation());
+
+
+
+  pcl_ros::transformPointCloud(*cloud,*cloud,fixed_to_sensor);
+
+  for (int i = 0; i < cloud->points.size(); i++)
+    cloud->points[i].x = 0;
+    //std::cout << cloud->points[i].x << " " << cloud->points[i].y << " " << cloud->points[i].z << " " << std::endl;
+
+  //while (!done) {
+
   pcl::ConcaveHull<pcl::PointXYZRGB> chull;
   chull.setInputCloud (cloud);
-  chull.setAlpha (0.1);
+  chull.setAlpha (1);
+  chull.setKeepInformation(true);
   chull.reconstruct (*cloud_hull);
 
-  std::cerr << "Concave hull has: " << cloud_hull->points.size ()
+  std::cerr << "Concave hull " << chull.getDim() << " has: " << cloud_hull->points.size ()
             << " data points." << std::endl;
+
+  if (chull.getDim() > 2)
+    ROS_ERROR("CONCAVE HULL IS 3D!");
+  else
+    done = true;
+
+  //}
+  for (int i = 0; i < cloud_hull->points.size(); i++)
+    cloud_hull->points[i].x = dist_to_sensor;
+
+
+  pcl_ros::transformPointCloud(*cloud_hull,*cloud_hull,sensor_to_fixed);
 
   pubCloud("cloud_hull", cloud_hull);
 
@@ -326,7 +365,7 @@ void test_hull_calc()
     //centerpoint.z = center.z();
     //cloud_in_box->points.push_back(centerpoint);
 
-    pubCloud("debug_cloud", cloud_in_box);
+
 
 }
 
