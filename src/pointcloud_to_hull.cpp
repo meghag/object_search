@@ -84,13 +84,13 @@ void pubPolygon(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_hull)
 //only if using a MESH_RESOURCE marker type:
     //marker.mesh_resource = "package://pr2_description/meshes/base_v0/base.dae";
 
-    gpc_polygon subject, clip, result;
+    gpc_polygon subject, result;
     subject.num_contours = 1;
     subject.hole = new int[1];
     subject.contour = new gpc_vertex_list[1];
     subject.contour[0].num_vertices = cloud_hull->points.size();
     subject.contour[0].vertex = new gpc_vertex[cloud_hull->points.size()];
-    for (int i = 0; i < cloud_hull->points.size(); ++i)
+    for (size_t i = 0; i < cloud_hull->points.size(); ++i)
     {
         subject.contour[0].vertex[i].x = cloud_hull->points[i].y * 10;
         subject.contour[0].vertex[i].y = cloud_hull->points[i].z * 10;
@@ -158,7 +158,7 @@ void pubPolygon(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_hull)
 }
 
 
-tf::Stamped<tf::Pose> getPoseIn(const char target_frame[], tf::Stamped<tf::Pose>src)
+tf::Stamped<tf::Pose> getPoseIn(const std::string target_frame, tf::Stamped<tf::Pose>src)
 {
 
     if (src.frame_id_ == "NO_ID_STAMPED_DEFAULT_CONSTRUCTION")
@@ -197,7 +197,7 @@ tf::Stamped<tf::Pose> getPoseIn(const char target_frame[], tf::Stamped<tf::Pose>
     return transform;
 }
 
-tf::Stamped<tf::Pose> getPose(const char target_frame[],const char lookup_frame[], ros::Time tm = ros::Time(0))
+tf::Stamped<tf::Pose> getPose(const std::string target_frame,const std::string lookup_frame, ros::Time tm = ros::Time(0))
 {
 
     init();
@@ -426,7 +426,7 @@ void calcHull(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointClo
     // this will not be needed anmore with groove
     pcl_ros::transformPointCloud(*cloud,*cloud,fixed_to_sensor);
 
-    for (int i = 0; i < cloud->points.size(); i++)
+    for (size_t i = 0; i < cloud->points.size(); i++)
         cloud->points[i].x = 0;
 
     pcl::ConcaveHull<pcl::PointXYZRGB> chull;
@@ -444,7 +444,7 @@ void calcHull(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointClo
 
     pubPolygon(cloud_hull);
 
-    for (int i = 0; i < cloud_hull->points.size(); i++)
+    for (size_t  i = 0; i < cloud_hull->points.size(); i++)
         cloud_hull->points[i].x = dist_to_sensor;
 
     pcl_ros::transformPointCloud(*cloud_hull,*cloud_hull,sensor_to_fixed);
@@ -496,6 +496,118 @@ void test_hull_calc()
 }
 
 
+//octomap
+#include <octomap_ros/OctomapROS.h>
+
+using namespace octomap;
+
+struct lex_compare {
+    bool operator() (const octomath::Vector3& lhs, const octomath::Vector3& rhs) const{
+        if (lhs.x() < rhs.x())
+         return true;
+        if (lhs.y() < rhs.y())
+         return true;
+        if (lhs.z() < rhs.z())
+         return true;
+        return false;
+    }
+};
+
+
+void insert_pointcloud(OcTreeROS *octoMap,tf::Point sensor_origin, pcl::PointCloud<pcl::PointXYZRGB>::Ptr inBox)
+{
+        geometry_msgs::Point point;
+        tf::pointTFToMsg(sensor_origin, point);
+
+        octoMap->insertScan(*inBox, point );
+}
+
+void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_hull)
+{
+
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_unknown (new pcl::PointCloud<pcl::PointXYZRGB>);
+
+    ros::Time lookup_time;
+
+    getCloud(cloud, fixed_frame_, ros::Time::now() - ros::Duration(1), &lookup_time);
+
+    {
+    double m_res = 0.01;
+    double m_treeDepth;
+    double m_probHit = 0.7;
+    double m_probMiss = 0.4;
+    double m_thresMin = 0.12;
+    double m_thresMax = 0.97;
+
+    OcTreeROS *m_octoMap = new OcTreeROS(m_res);
+    m_octoMap->octree.setProbHit(m_probHit);
+    m_octoMap->octree.setProbMiss(m_probMiss);
+    m_octoMap->octree.setClampingThresMin(m_thresMin);
+    m_octoMap->octree.setClampingThresMax(m_thresMax);
+    m_treeDepth = m_octoMap->octree.getTreeDepth();
+
+    OcTreeROS *m_octoMap_b = new OcTreeROS(m_res);
+    m_octoMap_b->octree.setProbHit(m_probHit);
+    m_octoMap_b->octree.setProbMiss(m_probMiss);
+    m_octoMap_b->octree.setClampingThresMin(m_thresMin);
+    m_octoMap_b->octree.setClampingThresMax(m_thresMax);
+    m_treeDepth = m_octoMap_b->octree.getTreeDepth();
+
+    tf::Vector3 bb_min(-1.9,1.6,.84);
+    tf::Vector3 bb_max(-1.6,2.1,1.2);
+
+    getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
+
+    tf::Stamped<tf::Pose> sensorsInMap = getPose(fixed_frame_.c_str(),rgb_optical_frame_.c_str());
+
+    insert_pointcloud(m_octoMap, sensorsInMap.getOrigin(), cloud_in_box);
+
+    std::list<octomath::Vector3> node_centers;
+    m_octoMap->octree.getUnknownLeafCenters(node_centers, octomath::Vector3(bb_min.x(),bb_min.y(),bb_min.z()), octomath::Vector3(bb_max.x(),bb_max.y(),bb_max.z()) );
+    std::cout << "a Number of free nodes: " << node_centers.size() << std::endl;
+
+    bb_min = tf::Vector3(-1.9,1.6,.84);
+    bb_max = tf::Vector3(-1.6,2.1,.86);
+
+    getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
+
+    insert_pointcloud(m_octoMap_b, sensorsInMap.getOrigin(), cloud_in_box);
+
+    std::list<octomath::Vector3> node_centers_b;
+
+    bb_min = tf::Vector3(-1.9,1.6,.84);
+    bb_max = tf::Vector3(-1.6,2.1,1.2);
+
+    m_octoMap_b->octree.getUnknownLeafCenters(node_centers_b, octomath::Vector3(bb_min.x(),bb_min.y(),bb_min.z()), octomath::Vector3(bb_max.x(),bb_max.y(),bb_max.z()) );
+    std::cout << "b Number of free nodes: " << node_centers_b.size() << std::endl;
+
+    std::set<octomath::Vector3,lex_compare> node_centers_set;
+    node_centers_set.insert(node_centers.begin(),node_centers.end());
+
+    //for (std::list<octomath::Vector3>::iterator it = node_centers.begin(); it != node_centers.end(); it++)
+    for (std::list<octomath::Vector3>::iterator it = node_centers_b.begin(); it != node_centers_b.end(); it++)
+    {
+        //if (node_centers_set.find(*it) != node_centers_set.end())
+        {
+            pcl::PointXYZRGB pnt;
+            pnt.x = it->x();
+            pnt.y = it->y();
+            pnt.z = it->z();
+            cloud_unknown->points.push_back(pnt);
+        }
+    }
+
+    pubCloud("cloud_unknown", cloud_unknown);
+
+
+    //( 	point3d_list &  	node_centers,		point3d  	pmin,		point3d  	pmax ) 		const
+    }
+
+}
+
+
 int main(int argc,char **argv)
 {
 
@@ -508,7 +620,8 @@ int main(int argc,char **argv)
     while (ros::ok())
     {
         rt.sleep();
-        test_hull_calc();
+        //test_hull_calc();
+        testOctomap();
     }
 
 }

@@ -23,6 +23,7 @@
   <depend package="arm_navigation_msgs"/>
   <depend package="actionlib"/>
   <depend package="pr2_controllers_msgs"/>
+  <depend package="octomap_ros"/>
   <export>
     <cpp cflags="-I${prefix}/include/" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lgpc"/>
   </export>
