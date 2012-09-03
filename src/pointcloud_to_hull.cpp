@@ -279,7 +279,7 @@ void getCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, std::string frame_id
 
 std::map<std::string, ros::Publisher*> cloud_publishers;
 
-void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
+void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = "/map")
 {
     ros::Publisher *cloud_pub;
 
@@ -301,7 +301,7 @@ void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZ
     sensor_msgs::PointCloud2 out; //in map frame
 
     pcl::toROSMsg(*cloud,out);
-    out.header.frame_id = fixed_frame_;
+    out.header.frame_id = frame_id;
     out.header.stamp = ros::Time::now();
     cloud_pub->publish(out);
 
@@ -338,11 +338,10 @@ void getPointsInBox(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, pcl::PointClou
 }
 
 
+//orthogonal projection
 void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_projected)
 //(tf::Vector3 planeNormal, double planeDist,
 {
-
-
     pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr plane_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -522,18 +521,40 @@ void insert_pointcloud(OcTreeROS *octoMap,tf::Point sensor_origin, pcl::PointClo
         octoMap->insertScan(*inBox, point );
 }
 
+void projectToPlanePerspective(tf::Vector3 sensorOrigin, float tableHeight, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_projected)
+{
+    for (size_t i = 0; i < cloud->points.size(); i++)
+    {
+        tf::Vector3 pt(cloud->points[i].x,cloud->points[i].y,cloud->points[i].z);
+        tf::Vector3 fromSens = pt - sensorOrigin;
+        float factor = (tableHeight - sensorOrigin.z()) / fromSens.z();
+        fromSens *= factor;
+        fromSens += sensorOrigin;
+        pcl::PointXYZRGB newpt = cloud->points[i];
+        newpt.x = fromSens.x();
+        newpt.y = fromSens.y();
+        newpt.z = fromSens.z();
+        cloud_projected->points.push_back(newpt);
+    }
+
+}
+
 void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_hull)
 {
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_table (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_unknown (new pcl::PointCloud<pcl::PointXYZRGB>);
 
     ros::Time lookup_time;
 
     getCloud(cloud, fixed_frame_, ros::Time::now() - ros::Duration(1), &lookup_time);
 
-    {
+    ros::Time before = ros::Time::now();
+
+// {
     double m_res = 0.01;
     double m_treeDepth;
     double m_probHit = 0.7;
@@ -555,12 +576,82 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
     m_octoMap_b->octree.setClampingThresMax(m_thresMax);
     m_treeDepth = m_octoMap_b->octree.getTreeDepth();
 
-    tf::Vector3 bb_min(-1.9,1.6,.84);
+    tf::Vector3 bb_min(-1.9,1.6,.875);
     tf::Vector3 bb_max(-1.6,2.1,1.2);
 
     getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
 
     tf::Stamped<tf::Pose> sensorsInMap = getPose(fixed_frame_.c_str(),rgb_optical_frame_.c_str());
+
+    //tf::Stamped<tf::Pose> sensorsInMap = getPose(rgb_optical_frame_,rgb_optical_frame_);
+
+    projectToPlanePerspective(sensorsInMap.getOrigin(), bb_min.z() ,cloud_in_box, cloud_in_box_projected);
+
+    pubCloud("cluster", cloud_in_box, fixed_frame_);
+
+    pubCloud("projected", cloud_in_box_projected, fixed_frame_);
+
+    std::cout << cloud_in_box->points.size() << " to pts " << cloud_in_box_projected->points.size()  << std::endl;
+
+    octomap::KeySet occupied_cells;
+
+    for (size_t i = 0; i < cloud_in_box->points.size(); ++i)
+    {
+        octomap::KeyRay ray;
+        octomath::Vector3 start;
+        start.x() = cloud_in_box->points[i].x;
+        start.y() = cloud_in_box->points[i].y;
+        start.z() = cloud_in_box->points[i].z;
+        octomath::Vector3 end;
+        end.x() = cloud_in_box_projected->points[i].x;
+        end.y() = cloud_in_box_projected->points[i].y;
+        end.z() = cloud_in_box_projected->points[i].z;
+      	m_octoMap->octree.computeRayKeys (start, end, ray);
+      	for (octomap::KeyRay::iterator it = ray.begin(); it != ray.end(); it++)
+      	{
+      	    occupied_cells.insert(*it);
+      	}
+    }
+
+
+    for (KeySet::iterator it = occupied_cells.begin(); it != occupied_cells.end(); ++it) {
+      m_octoMap->octree.updateNode(*it, true, false);
+    }
+
+    size_t numpt = 0;
+
+    for (OcTreeROS::OcTreeType::iterator it = m_octoMap->octree.begin(16),
+            end = m_octoMap->octree.end(); it != end; ++it)
+    {
+        if (m_octoMap->octree.isNodeOccupied(*it))
+        {
+
+            pcl::PointXYZRGB pt;
+
+            pt.x = it.getX();
+            pt.y = it.getY();
+            pt.z = it.getZ();
+
+            cloud_unknown->points.push_back(pt);
+
+            numpt++;
+        }
+
+    }
+
+
+    ros::Time after = ros::Time::now();
+
+    std::cout << "time taken for octomap construction " << (after - before).toSec() << " s." <<std::endl;
+
+    pubCloud("cloud_unknown", cloud_unknown, "/map");
+
+    std::cout << "octomap filled nodes " << numpt << " = " << cloud_unknown->points.size() <<std::endl;
+
+
+    /*
+
+    // difference of unknown space in octree
 
     insert_pointcloud(m_octoMap, sensorsInMap.getOrigin(), cloud_in_box);
 
@@ -571,9 +662,18 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
     bb_min = tf::Vector3(-1.9,1.6,.84);
     bb_max = tf::Vector3(-1.6,2.1,.86);
 
-    getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
+    //getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
+    for (float y = bb_min.y() - 2; y <= bb_max.y() + 2; y+= 0.01)
+        for (float x = bb_min.x() - 2; x <= bb_max.x() + 2; x+= 0.01)
+            {
+                pcl::PointXYZRGB pnt;
+                pnt.x = x;
+                pnt.y = y;
+                pnt.z = bb_min.z();
+                cloud_table->points.push_back(pnt);
+            }
 
-    insert_pointcloud(m_octoMap_b, sensorsInMap.getOrigin(), cloud_in_box);
+    insert_pointcloud(m_octoMap_b, sensorsInMap.getOrigin(), cloud_table);
 
     std::list<octomath::Vector3> node_centers_b;
 
@@ -584,10 +684,10 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
     std::cout << "b Number of free nodes: " << node_centers_b.size() << std::endl;
 
     std::set<octomath::Vector3,lex_compare> node_centers_set;
-    node_centers_set.insert(node_centers.begin(),node_centers.end());
+    node_centers_set.insert(node_centers_b.begin(),node_centers_b.end());
 
-    //for (std::list<octomath::Vector3>::iterator it = node_centers.begin(); it != node_centers.end(); it++)
-    for (std::list<octomath::Vector3>::iterator it = node_centers_b.begin(); it != node_centers_b.end(); it++)
+    for (std::list<octomath::Vector3>::iterator it = node_centers.begin(); it != node_centers.end(); it++)
+    //for (std::list<octomath::Vector3>::iterator it = node_centers_b.begin(); it != node_centers_b.end(); it++)
     {
         //if (node_centers_set.find(*it) != node_centers_set.end())
         {
@@ -604,7 +704,7 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
 
     //( 	point3d_list &  	node_centers,		point3d  	pmin,		point3d  	pmax ) 		const
     }
-
+    */
 }
 
 
