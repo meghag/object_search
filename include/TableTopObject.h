@@ -15,6 +15,8 @@ public:
 
     bool checkCollision(tf::Transform ownTransform, tf::Transform otherTransform, TableTopObject &otherObject);
 
+    void projectToPlanePerspective(tf::Vector3 sensorOrigin, float tableHeight, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_projected);
+
     octomap::OcTreeROS *m_octoMap;
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud;
 
