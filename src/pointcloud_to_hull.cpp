@@ -539,6 +539,42 @@ void projectToPlanePerspective(tf::Vector3 sensorOrigin, float tableHeight, cons
 
 }
 
+
+//represents a cluster as a pointcloud and the octomap including its occupancy and the space hidden by it as seen from the sensor
+class TableTopObject {
+    public:
+
+    TableTopObject();
+
+    bool checkCollision(tf::Pose ownPose, tf::Pose otherPose, TableTopObject *otherObject);
+
+    OcTreeROS *m_octoMap;
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud;
+};
+
+TableTopObject::TableTopObject()
+{
+    // is t hat necessary?
+    cloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
+    double m_res = 0.01;
+    double m_probHit = 0.7;
+    double m_probMiss = 0.4;
+    double m_thresMin = 0.12;
+    double m_thresMax = 0.97;
+
+    OcTreeROS *m_octoMap = new OcTreeROS(m_res);
+    m_octoMap->octree.setProbHit(m_probHit);
+    m_octoMap->octree.setProbMiss(m_probMiss);
+    m_octoMap->octree.setClampingThresMin(m_thresMin);
+    m_octoMap->octree.setClampingThresMax(m_thresMax);
+    //m_treeDepth = m_octoMap->octree.getTreeDepth();
+}
+
+bool TableTopObject::checkCollision(tf::Pose ownPose, tf::Pose otherPose, TableTopObject *otherObject)
+{
+    return true;
+}
+
 void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_hull)
 {
 
@@ -556,7 +592,7 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
 
 // {
     double m_res = 0.01;
-    double m_treeDepth;
+    //double m_treeDepth;
     double m_probHit = 0.7;
     double m_probMiss = 0.4;
     double m_thresMin = 0.12;
@@ -567,14 +603,14 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
     m_octoMap->octree.setProbMiss(m_probMiss);
     m_octoMap->octree.setClampingThresMin(m_thresMin);
     m_octoMap->octree.setClampingThresMax(m_thresMax);
-    m_treeDepth = m_octoMap->octree.getTreeDepth();
+    //m_treeDepth = m_octoMap->octree.getTreeDepth();
 
     OcTreeROS *m_octoMap_b = new OcTreeROS(m_res);
     m_octoMap_b->octree.setProbHit(m_probHit);
     m_octoMap_b->octree.setProbMiss(m_probMiss);
     m_octoMap_b->octree.setClampingThresMin(m_thresMin);
     m_octoMap_b->octree.setClampingThresMax(m_thresMax);
-    m_treeDepth = m_octoMap_b->octree.getTreeDepth();
+    //m_treeDepth = m_octoMap_b->octree.getTreeDepth();
 
     tf::Vector3 bb_min(-1.9,1.6,.875);
     tf::Vector3 bb_max(-1.6,2.1,1.2);
@@ -613,14 +649,17 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
       	}
     }
 
-
     for (KeySet::iterator it = occupied_cells.begin(); it != occupied_cells.end(); ++it) {
       m_octoMap->octree.updateNode(*it, true, false);
     }
 
     size_t numpt = 0;
+    size_t numpt_not = 0;
 
-    for (OcTreeROS::OcTreeType::iterator it = m_octoMap->octree.begin(16),
+    int depth;
+    nh_->param<int>("oct_depth", depth, 16);
+
+    for (OcTreeROS::OcTreeType::iterator it = m_octoMap->octree.begin(depth),
             end = m_octoMap->octree.end(); it != end; ++it)
     {
         if (m_octoMap->octree.isNodeOccupied(*it))
@@ -635,10 +674,11 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
             cloud_unknown->points.push_back(pt);
 
             numpt++;
+        } else {
+            numpt_not++;
         }
 
     }
-
 
     ros::Time after = ros::Time::now();
 
@@ -646,7 +686,61 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
 
     pubCloud("cloud_unknown", cloud_unknown, "/map");
 
-    std::cout << "octomap filled nodes " << numpt << " = " << cloud_unknown->points.size() <<std::endl;
+    std::cout << "octomap filled nodes " << numpt << " = " << cloud_unknown->points.size() << " not filled " << numpt_not << std::endl;
+
+    std::cout << "octomap volume " << m_octoMap->octree.volume() << std::endl;
+
+    before = ros::Time::now();
+
+    //OcTreeROS *m_octoMap_b = new OcTreeROS(m_res);
+    for (double xadd = 0; xadd < 0.5; xadd+= 0.01)
+    for (KeySet::iterator it = occupied_cells.begin(); it != occupied_cells.end(); ++it) {
+
+
+        //octomap::OcTreeNode *node = m_octoMap->octree.search(*it);
+        //point3d 	keyToCoord (const OcTreeKey &key) const
+        octomath::Vector3 coord;
+        m_octoMap->octree.genCoords(*it, 16, coord);
+
+        //todo : transform the object to its new coordinates
+        coord.x() += xadd;
+
+        octomap::OcTreeKey key;
+
+        if (!m_octoMap->octree.genKey(coord, key))
+            continue;
+
+        octomap::OcTreeNode *node = m_octoMap->octree.search(key);
+
+        if (node && m_octoMap->octree.isNodeOccupied(node))
+        {
+            ROS_INFO("XADD %f collision", xadd);
+            break;
+        }
+            //numpt_not ++;
+
+        //octomap::OcTreeNode *node = m_octoMap->octree.search(coord);
+        //if (node->isOccupied())
+          //  numpt_not ++;
+
+        //octomap::OcTreeKey key = m_octoMap->octree.genKeyFromCoord(coord);
+        //NODE* search (const point3d& value)
+        //m_octoMap->octree.updateNode(*it, true, false);
+
+    }
+
+    after = ros::Time::now();
+
+    std::cout << " now filled " << numpt_not << std::endl;
+    std::cout << "time taken for collision check" << (after - before).toSec() << " s." <<std::endl;
+
+
+
+
+
+    // lookup tests:
+
+
 
 
     /*
