@@ -20,7 +20,6 @@
 
 #include <visualization_msgs/Marker.h>
 
-
 extern "C" {
 #include <gpcl/gpc.h>
 }
@@ -98,10 +97,13 @@ void pubPolygon(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_hull)
 
     gpc_tristrip tristrip;
 
-    if (have_last) {
+    if (have_last)
+    {
         gpc_polygon_clip(GPC_INT, &subject, &last, &result);
         gpc_polygon_to_tristrip(&result,&tristrip);
-    }  else {
+    }
+    else
+    {
         gpc_polygon_to_tristrip(&subject,&tristrip);
     }
 
@@ -116,7 +118,8 @@ void pubPolygon(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_hull)
             //std::cout << "   " << tristrip.strip[i].vertex[j-1].x << " " << tristrip.strip[i].vertex[j-1].y << std::endl;
             //std::cout << "   " << tristrip.strip[i].vertex[j-0].x << " " << tristrip.strip[i].vertex[j-0].y << std::endl;
             geometry_msgs::Point pt[3];
-            if (j % 2 == 0) {
+            if (j % 2 == 0)
+            {
                 pt[0].x = dist_to_sensor;
                 pt[0].y = tristrip.strip[i].vertex[j-2].x;
                 pt[0].z = tristrip.strip[i].vertex[j-2].y;
@@ -127,7 +130,8 @@ void pubPolygon(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_hull)
                 pt[2].y = tristrip.strip[i].vertex[j-0].x;
                 pt[2].z = tristrip.strip[i].vertex[j-0].y;
             }
-            else {
+            else
+            {
                 pt[0].x = dist_to_sensor;
                 pt[0].y = tristrip.strip[i].vertex[j-1].x;
                 pt[0].z = tristrip.strip[i].vertex[j-1].y;
@@ -471,54 +475,58 @@ void test_hull_calc()
     getCloud(cloud, fixed_frame_, ros::Time::now() - ros::Duration(1), &lookup_time);
 
     {
-    tf::Vector3 bb_min(-1.9,1.6,.84);
-    tf::Vector3 bb_max(-1.6,2.1,1.2);
+        tf::Vector3 bb_min(-1.9,1.6,.84);
+        tf::Vector3 bb_max(-1.6,2.1,1.2);
 
-    getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
+        getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
 
-    projectToPlane(cloud_in_box, cloud_in_box_projected);
+        projectToPlane(cloud_in_box, cloud_in_box_projected);
 
-    calcHull(cloud_in_box_projected, cloud_in_box_projected_hull);
+        calcHull(cloud_in_box_projected, cloud_in_box_projected_hull);
     }
 
     {
-    tf::Vector3 bb_min(-1.9,1.6,.75);
-    tf::Vector3 bb_max(-1.6,2.1,.84);
+        tf::Vector3 bb_min(-1.9,1.6,.75);
+        tf::Vector3 bb_max(-1.6,2.1,.84);
 
-    getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
+        getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
 
-    projectToPlane(cloud_in_box, cloud_in_box_projected);
+        projectToPlane(cloud_in_box, cloud_in_box_projected);
 
-    calcHull(cloud_in_box_projected, cloud_in_box_projected_hull);
+        calcHull(cloud_in_box_projected, cloud_in_box_projected_hull);
     }
 
 }
 
 
 //octomap
-#include <octomap_ros/OctomapROS.h>
+
+#include <TableTopObject.h>
+
+//#include <octomap_ros/OctomapROS.h>
 
 using namespace octomap;
 
-struct lex_compare {
-    bool operator() (const octomath::Vector3& lhs, const octomath::Vector3& rhs) const{
+struct lex_compare
+{
+    bool operator() (const octomath::Vector3& lhs, const octomath::Vector3& rhs) const
+    {
         if (lhs.x() < rhs.x())
-         return true;
+            return true;
         if (lhs.y() < rhs.y())
-         return true;
+            return true;
         if (lhs.z() < rhs.z())
-         return true;
+            return true;
         return false;
     }
 };
 
-
 void insert_pointcloud(OcTreeROS *octoMap,tf::Point sensor_origin, pcl::PointCloud<pcl::PointXYZRGB>::Ptr inBox)
 {
-        geometry_msgs::Point point;
-        tf::pointTFToMsg(sensor_origin, point);
+    geometry_msgs::Point point;
+    tf::pointTFToMsg(sensor_origin, point);
 
-        octoMap->insertScan(*inBox, point );
+    octoMap->insertScan(*inBox, point );
 }
 
 void projectToPlanePerspective(tf::Vector3 sensorOrigin, float tableHeight, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_projected)
@@ -539,20 +547,7 @@ void projectToPlanePerspective(tf::Vector3 sensorOrigin, float tableHeight, cons
 
 }
 
-
-//represents a cluster as a pointcloud and the octomap including its occupancy and the space hidden by it as seen from the sensor
-class TableTopObject {
-    public:
-
-    TableTopObject();
-
-    bool checkCollision(tf::Pose ownPose, tf::Pose otherPose, TableTopObject *otherObject);
-
-    OcTreeROS *m_octoMap;
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud;
-};
-
-TableTopObject::TableTopObject()
+TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box)
 {
     // is t hat necessary?
     cloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -562,17 +557,87 @@ TableTopObject::TableTopObject()
     double m_thresMin = 0.12;
     double m_thresMax = 0.97;
 
-    OcTreeROS *m_octoMap = new OcTreeROS(m_res);
+    m_octoMap = new OcTreeROS(m_res);
     m_octoMap->octree.setProbHit(m_probHit);
     m_octoMap->octree.setProbMiss(m_probMiss);
     m_octoMap->octree.setClampingThresMin(m_thresMin);
     m_octoMap->octree.setClampingThresMax(m_thresMax);
     //m_treeDepth = m_octoMap->octree.getTreeDepth();
+//}
+
+//void TableTopObject::initializeWithPointcloud()
+//{
+
+    cloud = cloud_in_box;
+
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZRGB>);
+
+    projectToPlanePerspective(sensorOrigin, tableHeight ,cloud_in_box, cloud_in_box_projected);
+
+    octomap::KeySet occupied_cells;
+
+    for (size_t i = 0; i < cloud_in_box->points.size(); ++i)
+    {
+        octomap::KeyRay ray;
+        octomath::Vector3 start;
+        start.x() = cloud_in_box->points[i].x;
+        start.y() = cloud_in_box->points[i].y;
+        start.z() = cloud_in_box->points[i].z;
+        octomath::Vector3 end;
+        end.x() = cloud_in_box_projected->points[i].x;
+        end.y() = cloud_in_box_projected->points[i].y;
+        end.z() = cloud_in_box_projected->points[i].z;
+        m_octoMap->octree.computeRayKeys (start, end, ray);
+        for (octomap::KeyRay::iterator it = ray.begin(); it != ray.end(); it++)
+        {
+            occupied_cells.insert(*it);
+        }
+    }
+
+    for (KeySet::iterator it = occupied_cells.begin(); it != occupied_cells.end(); ++it)
+    {
+        m_octoMap->octree.updateNode(*it, true, false);
+    }
+
 }
 
-bool TableTopObject::checkCollision(tf::Pose ownPose, tf::Pose otherPose, TableTopObject *otherObject)
+bool TableTopObject::checkCollision(tf::Transform ownTransform, tf::Transform otherTransform, TableTopObject &otherObject)
 {
-    return true;
+
+    tf::Transform resultingTransform = otherTransform.inverseTimes(ownTransform);
+
+    geometry_msgs::Transform trans;
+
+    //tf::transformTFToMsg(resultingTransform, trans);
+    //std::cout << "resulting transform :" << trans << std::endl;
+
+    for (OcTreeROS::OcTreeType::iterator it = m_octoMap->octree.begin(16),
+            end = m_octoMap->octree.end(); it != end; ++it)
+    {
+
+        tf::Vector3 vec(it.getX(), it.getY(), it.getZ());
+
+        vec = resultingTransform * vec;
+
+        octomath::Vector3 coord;
+
+        coord.x() = vec.x();
+        coord.y() = vec.y();
+        coord.z() = vec.z();
+
+        octomap::OcTreeKey key;
+
+        // can this happen ?
+        if (!otherObject.m_octoMap->octree.genKey(coord, key))
+            continue;
+
+        octomap::OcTreeNode *node = otherObject.m_octoMap->octree.search(key);
+
+        if (node && otherObject.m_octoMap->octree.isNodeOccupied(node))
+            return true;
+
+    }
+    return false;
 }
 
 void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_hull)
@@ -619,8 +684,27 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
 
     tf::Stamped<tf::Pose> sensorsInMap = getPose(fixed_frame_.c_str(),rgb_optical_frame_.c_str());
 
-    //tf::Stamped<tf::Pose> sensorsInMap = getPose(rgb_optical_frame_,rgb_optical_frame_);
+    TableTopObject myCluster(sensorsInMap.getOrigin(), bb_min.z(), cloud_in_box);
 
+    for (double xadd = 0; xadd < 0.5; xadd+= 0.01)
+    {
+        tf::Transform ownTransform;
+        tf::Transform otherTransform;
+
+        ownTransform.setIdentity();
+        otherTransform.setIdentity();
+
+        otherTransform.getOrigin().setX(xadd);
+
+        bool collides = myCluster.checkCollision(ownTransform, otherTransform, myCluster);
+
+        std::cout << "Cluster are " << (collides ? "" : "not ") << " in collision at " << xadd << " cm shift" << std::endl;
+    }
+
+
+
+    //tf::Stamped<tf::Pose> sensorsInMap = getPose(rgb_optical_frame_,rgb_optical_frame_);
+/*
     projectToPlanePerspective(sensorsInMap.getOrigin(), bb_min.z() ,cloud_in_box, cloud_in_box_projected);
 
     pubCloud("cluster", cloud_in_box, fixed_frame_);
@@ -642,15 +726,16 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
         end.x() = cloud_in_box_projected->points[i].x;
         end.y() = cloud_in_box_projected->points[i].y;
         end.z() = cloud_in_box_projected->points[i].z;
-      	m_octoMap->octree.computeRayKeys (start, end, ray);
-      	for (octomap::KeyRay::iterator it = ray.begin(); it != ray.end(); it++)
-      	{
-      	    occupied_cells.insert(*it);
-      	}
+        m_octoMap->octree.computeRayKeys (start, end, ray);
+        for (octomap::KeyRay::iterator it = ray.begin(); it != ray.end(); it++)
+        {
+            occupied_cells.insert(*it);
+        }
     }
 
-    for (KeySet::iterator it = occupied_cells.begin(); it != occupied_cells.end(); ++it) {
-      m_octoMap->octree.updateNode(*it, true, false);
+    for (KeySet::iterator it = occupied_cells.begin(); it != occupied_cells.end(); ++it)
+    {
+        m_octoMap->octree.updateNode(*it, true, false);
     }
 
     size_t numpt = 0;
@@ -658,6 +743,8 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
 
     int depth;
     nh_->param<int>("oct_depth", depth, 16);
+
+
 
     for (OcTreeROS::OcTreeType::iterator it = m_octoMap->octree.begin(depth),
             end = m_octoMap->octree.end(); it != end; ++it)
@@ -674,11 +761,14 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
             cloud_unknown->points.push_back(pt);
 
             numpt++;
-        } else {
+        }
+        else
+        {
             numpt_not++;
         }
 
     }
+
 
     ros::Time after = ros::Time::now();
 
@@ -692,54 +782,52 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
 
     before = ros::Time::now();
 
-    //OcTreeROS *m_octoMap_b = new OcTreeROS(m_res);
     for (double xadd = 0; xadd < 0.5; xadd+= 0.01)
-    for (KeySet::iterator it = occupied_cells.begin(); it != occupied_cells.end(); ++it) {
-
-
-        //octomap::OcTreeNode *node = m_octoMap->octree.search(*it);
-        //point3d 	keyToCoord (const OcTreeKey &key) const
-        octomath::Vector3 coord;
-        m_octoMap->octree.genCoords(*it, 16, coord);
-
-        //todo : transform the object to its new coordinates
-        coord.x() += xadd;
-
-        octomap::OcTreeKey key;
-
-        if (!m_octoMap->octree.genKey(coord, key))
-            continue;
-
-        octomap::OcTreeNode *node = m_octoMap->octree.search(key);
-
-        if (node && m_octoMap->octree.isNodeOccupied(node))
+        for (OcTreeROS::OcTreeType::iterator it = m_octoMap->octree.begin(16),
+                end = m_octoMap->octree.end(); it != end; ++it)
         {
-            ROS_INFO("XADD %f collision", xadd);
-            break;
+
+
+            //octomap::OcTreeNode *node = m_octoMap->octree.search(*it);
+            //point3d 	keyToCoord (const OcTreeKey &key) const
+            octomath::Vector3 coord;
+            //m_octoMap->octree.genCoords(*it, 16, coord);
+            //it->getCoords(coord);
+
+            coord.x() = it.getX();
+            coord.y() = it.getY();
+            coord.z() = it.getZ();
+
+            //todo : transform the object to its new coordinates
+            coord.x() += xadd;
+
+            octomap::OcTreeKey key;
+
+            if (!m_octoMap->octree.genKey(coord, key))
+                continue;
+
+            octomap::OcTreeNode *node = m_octoMap->octree.search(key);
+
+            if (node && m_octoMap->octree.isNodeOccupied(node))
+            {
+                ROS_INFO("XADD %f collision", xadd);
+                break;
+            }
+
         }
-            //numpt_not ++;
 
-        //octomap::OcTreeNode *node = m_octoMap->octree.search(coord);
-        //if (node->isOccupied())
-          //  numpt_not ++;
 
-        //octomap::OcTreeKey key = m_octoMap->octree.genKeyFromCoord(coord);
-        //NODE* search (const point3d& value)
-        //m_octoMap->octree.updateNode(*it, true, false);
-
-    }
 
     after = ros::Time::now();
 
     std::cout << " now filled " << numpt_not << std::endl;
     std::cout << "time taken for collision check" << (after - before).toSec() << " s." <<std::endl;
-
+    */
 
 
 
 
     // lookup tests:
-
 
 
 
