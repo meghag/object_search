@@ -1,4 +1,3 @@
-
 #include <TableTopObject.h>
 
 using namespace octomap;
@@ -22,9 +21,18 @@ void TableTopObject::projectToPlanePerspective(tf::Vector3 sensorOrigin, float t
 
 }
 
+TableTopObject::TableTopObject(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box)
+{
+    cloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
+    cloud = cloud_in_box;
+    has_octo = false;
+}
+
+
+
 TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box)
 {
-    // is t hat necessary?
+    // is that necessary?
     cloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
     double m_res = 0.01;
     double m_probHit = 0.7;
@@ -37,11 +45,6 @@ TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tabl
     m_octoMap->octree.setProbMiss(m_probMiss);
     m_octoMap->octree.setClampingThresMin(m_thresMin);
     m_octoMap->octree.setClampingThresMax(m_thresMax);
-    //m_treeDepth = m_octoMap->octree.getTreeDepth();
-//}
-
-//void TableTopObject::initializeWithPointcloud()
-//{
 
     cloud = cloud_in_box;
 
@@ -73,6 +76,7 @@ TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tabl
     {
         m_octoMap->octree.updateNode(*it, true, false);
     }
+    has_octo = true;
 
 }
 
@@ -113,4 +117,102 @@ bool TableTopObject::checkCollision(tf::Transform ownTransform, tf::Transform ot
 
     }
     return false;
+}
+
+bool TableTopObject::checkCollisionPointcloud(tf::Transform ownTransform, tf::Transform otherTransform, TableTopObject &otherObject)
+{
+
+    tf::Transform resultingTransform = otherTransform.inverseTimes(ownTransform);
+
+    geometry_msgs::Transform trans;
+
+    for (size_t i = 0; i < cloud->points.size(); ++i)
+    {
+
+        tf::Vector3 vec(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z);
+
+        vec = resultingTransform * vec;
+
+        octomath::Vector3 coord;
+
+        coord.x() = vec.x();
+        coord.y() = vec.y();
+        coord.z() = vec.z();
+
+        octomap::OcTreeKey key;
+
+        // can this happen ?
+        if (!otherObject.m_octoMap->octree.genKey(coord, key))
+            continue;
+
+        octomap::OcTreeNode *node = otherObject.m_octoMap->octree.search(key);
+
+        if (node && otherObject.m_octoMap->octree.isNodeOccupied(node))
+            return true;
+
+    }
+    return false;
+}
+
+bool TableTopObject::checkCoveredPointcloud(tf::Transform ownTransform, tf::Transform otherTransform, TableTopObject &otherObject)
+{
+
+    tf::Transform resultingTransform = otherTransform.inverseTimes(ownTransform);
+
+    geometry_msgs::Transform trans;
+
+    for (size_t i = 0; i < cloud->points.size(); ++i)
+    {
+
+        tf::Vector3 vec(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z);
+
+        vec = resultingTransform * vec;
+
+        octomath::Vector3 coord;
+
+        coord.x() = vec.x();
+        coord.y() = vec.y();
+        coord.z() = vec.z();
+
+        octomap::OcTreeKey key;
+
+        // can this happen ?
+        if (!otherObject.m_octoMap->octree.genKey(coord, key))
+            continue;
+
+        octomap::OcTreeNode *node = otherObject.m_octoMap->octree.search(key);
+
+        if (!node)
+            return false;
+        //if (node && (!otherObject.m_octoMap->octree.isNodeOccupied(node)))
+          //  return false;
+
+    }
+    return true;
+}
+
+
+
+pcl::PointCloud<pcl::PointXYZRGB>::Ptr TableTopObject::getAsCloud()
+{
+
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+
+    for (OcTreeROS::OcTreeType::iterator it = m_octoMap->octree.begin(16),
+            end = m_octoMap->octree.end(); it != end; ++it)
+    {
+        if (m_octoMap->octree.isNodeOccupied(*it))
+        {
+
+            pcl::PointXYZRGB pt;
+
+            pt.x = it.getX();
+            pt.y = it.getY();
+            pt.z = it.getZ();
+
+            cloud->points.push_back(pt);
+        }
+
+    }
+    return cloud;
 }
