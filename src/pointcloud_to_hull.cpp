@@ -55,7 +55,8 @@ void init()
         vis_pub_ = new ros::Publisher();
         *vis_pub_ = nh_->advertise<visualization_msgs::Marker>( "visualization_marker", 0 );
     }
-    if (!pose_ary_pub_) {
+    if (!pose_ary_pub_)
+    {
         pose_ary_pub_ = new ros::Publisher();
         *pose_ary_pub_ = nh_->advertise<geometry_msgs::PoseArray>("vdc_poses",0,true);
     }
@@ -612,13 +613,14 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
         act.setOrigin(tf::Vector3(0,0,0));
         tf::Pose rel;
         rel.setOrigin(tf::Vector3(.0125,0,0));
+        //rel.setOrigin(tf::Vector3(.05,0,0));
         rel.setRotation(tf::Quaternion(0,0,0,1));
 
         act = act * rel;
         pcl::PointXYZRGB pt;
         pt.x = act.getOrigin().x();
         pt.y = act.getOrigin().y();
-        pt.z = act.getOrigin().z();
+        pt.z = act.getOrigin().z() * 2 * 4;
 
         object_cloud->points.push_back(pt);
 
@@ -675,14 +677,15 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
 
     TableTopObject myCluster(sensorsInMap.getOrigin(), bb_min.z(), cloud_in_box);
 
-    pubCloud("cluster_volume", myCluster.getAsCloud() , "/map");
+    //pubCloud("cluster_volume", myCluster.getAsCloud() , "/map");
 
-
+    ROS_INFO("before creating samples");
     std::vector<tf::Pose> object_belief;
-    for (int k =0; k < 10000; k++)
+    for (int k =0; k < 1000000; k++)
     {
         object_belief.push_back(vdc_pose_bound(bb_min,bb_max,k));
     }
+    ROS_INFO("samples created");
 
     //pub_belief(object_belief);
 
@@ -696,9 +699,40 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
             object_posterior_belief.push_back(*it);
     }
 
+    ROS_INFO("samples checked");
+
     std::cout << "size of object belief " << object_posterior_belief.size() << std::endl;
 
     pub_belief(object_posterior_belief);
+
+    ros::Rate rt(5);
+    int idx = 0;
+    while (ros::ok())
+    {
+        idx ++;
+        if (idx == object_posterior_belief.size())
+            idx = 0;
+
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr hypo_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+        //std::cout << "k " << idx<< " size " << obj.cloud->points.size() << std::endl;
+        for (size_t i = 0; i < obj.cloud->points.size(); ++i)
+        {
+            tf::Vector3 vec(obj.cloud->points[i].x, obj.cloud->points[i].y, obj.cloud->points[i].z);
+            vec = object_posterior_belief[idx] * vec;
+            pcl::PointXYZRGB pt;
+            pt.x = vec.x();
+            pt.y = vec.y();
+            pt.z = vec.z();
+            pt.r = 0;
+            pt.g = 0;
+            pt.b = 1;
+            hypo_cloud->points.push_back(pt);
+        }
+
+        pubCloud("hypothesis", hypo_cloud , "/map");
+
+        //rt.sleep();
+    }
 
     /*
     if (0)
