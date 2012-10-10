@@ -83,7 +83,7 @@ private:
 
         boost::shared_ptr<const vector<int> > indices (new vector<int> (temp));
         tree->setInputCloud (object_cloud, indices);
-        euclidean_clustering(*object_cloud, *indices, tree, 0.02, cluster_indices, 2000, 100000);
+        euclidean_clustering(*object_cloud, *indices, tree, 0.02, cluster_indices, 500, 100000);
 
         int j = 0;
         std::vector<sensor_msgs::PointCloud2> clusters;

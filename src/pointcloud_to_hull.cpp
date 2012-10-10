@@ -671,7 +671,7 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
         pcl::PointXYZRGB pt;
         pt.x = act.getOrigin().x();
         pt.y = act.getOrigin().y();
-        pt.z = act.getOrigin().z() * 2 * 4;
+        pt.z = act.getOrigin().z() * 4;
 
         object_cloud->points.push_back(pt);
 
@@ -786,6 +786,8 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
         }
     }
 
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr percentage_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+
     //create tabletop representation with one cluster missing at a time
     std::vector<TableTopObject*> obj_excluding;
     for (size_t i = 0; i < clusters.size(); i ++)
@@ -805,7 +807,30 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
         }
         std::cout << "Removing Cluster " << i << " would reveal " << object_posterior_belief.size() - num_remaining << " of remaining hypotheses " <<
             " that is "  << 100 * (object_posterior_belief.size() - num_remaining) / object_posterior_belief.size()  << "%" << std::endl;
+
+        double percentage = (object_posterior_belief.size() - num_remaining) / (double)object_posterior_belief.size();
+
+        for (size_t j = 0; j < clusters[i]->points.size(); j++)
+            {
+                pcl::PointXYZRGB pt;
+                pt.x = clusters[i]->points[j].x;
+                pt.y = clusters[i]->points[j].y;
+                pt.z = clusters[i]->points[j].z;
+                pt.r = percentage * 255;
+                pt.g = 0;
+                pt.b = 255 - (percentage * 255);
+                if (percentage == 0)
+                {
+                    pt.b = 0;
+                    pt.g = 255;
+                }
+
+                percentage_cloud->points.push_back(pt);
+            }
     }
+
+    pubCloud("percentage", percentage_cloud, "/map");
+
 
     ros::Rate rt(5);
     size_t idx = 0;
