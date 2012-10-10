@@ -11,6 +11,8 @@ class TableTopObject
 {
 public:
 
+    TableTopObject();
+
     TableTopObject(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box);
 
     TableTopObject(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box);
@@ -28,6 +30,8 @@ public:
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud;
 
     bool has_octo;
+
+    void addPointCloud(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box);
 
 };
 

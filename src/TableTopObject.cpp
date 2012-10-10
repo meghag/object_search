@@ -18,8 +18,14 @@ void TableTopObject::projectToPlanePerspective(tf::Vector3 sensorOrigin, float t
         newpt.z = fromSens.z();
         cloud_projected->points.push_back(newpt);
     }
-
 }
+
+TableTopObject::TableTopObject()
+{
+    cloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
+    has_octo = false;
+}
+
 
 TableTopObject::TableTopObject(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box)
 {
@@ -29,24 +35,41 @@ TableTopObject::TableTopObject(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_b
 }
 
 
-
 TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box)
 {
     // is that necessary?
     cloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
-    double m_res = 0.01;
-    double m_probHit = 0.7;
-    double m_probMiss = 0.4;
-    double m_thresMin = 0.12;
-    double m_thresMax = 0.97;
+    has_octo = false;
 
-    m_octoMap = new OcTreeROS(m_res);
-    m_octoMap->octree.setProbHit(m_probHit);
-    m_octoMap->octree.setProbMiss(m_probMiss);
-    m_octoMap->octree.setClampingThresMin(m_thresMin);
-    m_octoMap->octree.setClampingThresMax(m_thresMax);
+    addPointCloud(sensorOrigin,tableHeight,cloud_in_box);
 
-    cloud = cloud_in_box;
+}
+
+
+void TableTopObject::addPointCloud(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box)
+{
+    if (!has_octo)
+    {
+
+        double m_res = 0.01;
+        double m_probHit = 0.7;
+        double m_probMiss = 0.4;
+        double m_thresMin = 0.12;
+        double m_thresMax = 0.97;
+
+        m_octoMap = new OcTreeROS(m_res);
+        m_octoMap->octree.setProbHit(m_probHit);
+        m_octoMap->octree.setProbMiss(m_probMiss);
+        m_octoMap->octree.setClampingThresMin(m_thresMin);
+        m_octoMap->octree.setClampingThresMax(m_thresMax);
+        has_octo = true;
+
+    }
+
+    for (size_t i = 0; i < cloud_in_box->points.size(); i++)
+    {
+        cloud->points.push_back(cloud_in_box->points[i]);
+    }
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZRGB>);
 
@@ -76,9 +99,10 @@ TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tabl
     {
         m_octoMap->octree.updateNode(*it, true, false);
     }
-    has_octo = true;
+
 
 }
+
 
 bool TableTopObject::checkCollision(tf::Transform ownTransform, tf::Transform otherTransform, TableTopObject &otherObject)
 {
@@ -185,7 +209,7 @@ bool TableTopObject::checkCoveredPointcloud(tf::Transform ownTransform, tf::Tran
         if (!node)
             return false;
         //if (node && (!otherObject.m_octoMap->octree.isNodeOccupied(node)))
-          //  return false;
+        //  return false;
 
     }
     return true;

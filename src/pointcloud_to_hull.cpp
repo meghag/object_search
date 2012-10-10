@@ -21,9 +21,60 @@
 
 #include <visualization_msgs/Marker.h>
 
+#include <tum_os/Clusters.h>
+
 extern "C" {
 #include <gpcl/gpc.h>
 }
+
+#include <ros/ros.h>
+#include <actionlib/client/simple_action_client.h>
+#include <actionlib/client/terminal_state.h>
+#include <mc_graspable/FindGraspablesAction.h>
+
+void getGrasps()
+{
+
+  actionlib::SimpleActionClient<mc_graspable::FindGraspablesAction> ac("mc_graspable", true);
+
+  ROS_INFO("Waiting for action server to start.");
+  // wait for the action server to start
+  ac.waitForServer(); //will wait for infinite time
+
+  ROS_INFO("Action server started, sending goal.");
+  // send a goal to the action
+  mc_graspable::FindGraspablesGoal goal;
+
+  goal.cloud_topic = "/head_mount_kinect/depth_registered/points";
+
+  goal.frame_id = "/map";
+  goal.aabb_min.x = -2.1;//atof(argv[1]);
+  goal.aabb_min.y = 1.54;//atof(argv[2]);
+  goal.aabb_min.z = .5;
+  goal.aabb_max.x = -1.59;//atof(argv[3]);
+  goal.aabb_max.y = 2,2;//atof(argv[4]);
+  goal.aabb_max.z = 1.5;
+  goal.delta = 0.02;
+  goal.scaling = 20;
+  goal.pitch_limit = 0.4;
+  goal.thickness = 0.04;
+  ac.sendGoal(goal);
+
+  //wait for the action to return
+  bool finished_before_timeout = ac.waitForResult(ros::Duration(30.0));
+
+  if (finished_before_timeout)
+  {
+    actionlib::SimpleClientGoalState state = ac.getState();
+    ROS_INFO("Action finished: %s",state.toString().c_str());
+  }
+  else
+    ROS_INFO("Action did not finish before the time out.");
+
+
+  //return 0;
+}
+
 
 
 std::string fixed_frame_ = "map";
@@ -605,8 +656,8 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
 
     int n = 0;
 
+    //generate object we search as a pointcloud
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr object_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
-
     for (int i=0; i < 100; i++)
     {
         tf::Pose act = vdc_pose(n++);
@@ -630,6 +681,7 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
         //ps_ary.poses.push_back(pose_msg);
     }
 
+    //generate a tabletopobject representing the object we search
     TableTopObject obj(object_cloud);
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -668,7 +720,8 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
 
     //tf::Vector3 bb_min(-1.9,1.6,.875);
     //tf::Vector3 bb_max(-1.6,2.1,1.2);
-    tf::Vector3 bb_min(-2.1,1.6,.875);
+    //tf::Vector3 bb_min(-2.1,1.6,.875);
+    tf::Vector3 bb_min(-2.1,1.6,.89);
     tf::Vector3 bb_max(-1.6,2.1,1.2);
 
     getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
@@ -705,8 +758,57 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
 
     pub_belief(object_posterior_belief);
 
+    std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr > clusters;
+
+    tum_os::Clusters clusters_msg;
+    {
+        pubCloud("object_cloud", cloud_in_box, "/map");
+        clusters_msg  = *(ros::topic::waitForMessage<tum_os::Clusters>("/clusters"));
+        std::cout << "Clusters : " << clusters_msg.clusters.size() << std::endl;
+        for (size_t i = 0; i < clusters_msg.clusters.size(); i++)
+        {
+            std::cout << "cluster " << i << clusters_msg.clusters[i].width << " * " << clusters_msg.clusters[i].height << std::endl;
+            pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
+            pcl::fromROSMsg(clusters_msg.clusters[i], *cloud);
+            pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloudrgb (new pcl::PointCloud<pcl::PointXYZRGB>);
+            for (size_t j = 0; j < cloud->points.size(); j++)
+            {
+                pcl::PointXYZRGB pt;
+                pt.x = cloud->points[j].x;
+                pt.y = cloud->points[j].y;
+                pt.z = cloud->points[j].z;
+                pt.r = 0;
+                pt.g = 0;
+                pt.b = 0;
+                cloudrgb->points.push_back(pt);
+            }
+            clusters.push_back(cloudrgb);
+        }
+    }
+
+    //create tabletop representation with one cluster missing at a time
+    std::vector<TableTopObject*> obj_excluding;
+    for (size_t i = 0; i < clusters.size(); i ++)
+    {
+        TableTopObject *act = new TableTopObject();
+        for (size_t j = 0; j < clusters.size(); j ++)
+        {
+            if (j != i)
+                act->addPointCloud(sensorsInMap.getOrigin(), bb_min.z(), clusters[j]);
+        }
+        obj_excluding.push_back(act);
+        size_t num_remaining = 0;
+        for (std::vector<tf::Pose>::iterator it = object_posterior_belief.begin(); it!=object_posterior_belief.end(); it++)
+        {
+            if (obj.checkCoveredPointcloud(*it,identity,*act))
+                num_remaining++;
+        }
+        std::cout << "Removing Cluster " << i << " would reveal " << object_posterior_belief.size() - num_remaining << " of remaining hypotheses " <<
+            " that is "  << 100 * (object_posterior_belief.size() - num_remaining) / object_posterior_belief.size()  << "%" << std::endl;
+    }
+
     ros::Rate rt(5);
-    int idx = 0;
+    size_t idx = 0;
     while (ros::ok())
     {
         idx ++;
@@ -957,7 +1059,6 @@ void  test_vdc()
     ps_ary.header.frame_id = "/map";
 
     int n = 0;
-
 
     ros::Rate rt(5);
 
