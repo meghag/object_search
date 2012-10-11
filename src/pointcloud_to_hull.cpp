@@ -32,48 +32,121 @@ extern "C" {
 #include <actionlib/client/terminal_state.h>
 #include <mc_graspable/FindGraspablesAction.h>
 
+void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = "/map");
+
 void getGrasps()
 {
 
-  actionlib::SimpleActionClient<mc_graspable::FindGraspablesAction> ac("mc_graspable", true);
+    actionlib::SimpleActionClient<mc_graspable::FindGraspablesAction> ac("mc_graspable", true);
 
-  ROS_INFO("Waiting for action server to start.");
-  // wait for the action server to start
-  ac.waitForServer(); //will wait for infinite time
+    ROS_INFO("Waiting for action server to start.");
+    // wait for the action server to start
+    ac.waitForServer(); //will wait for infinite time
 
-  ROS_INFO("Action server started, sending goal.");
-  // send a goal to the action
-  mc_graspable::FindGraspablesGoal goal;
+    ROS_INFO("Action server started, sending goal.");
+    // send a goal to the action
+    mc_graspable::FindGraspablesGoal goal;
 
-  goal.cloud_topic = "/head_mount_kinect/depth_registered/points";
+    goal.cloud_topic = "/head_mount_kinect/depth_registered/points";
 
-  goal.frame_id = "/map";
-  goal.aabb_min.x = -2.1;//atof(argv[1]);
-  goal.aabb_min.y = 1.54;//atof(argv[2]);
-  goal.aabb_min.z = .5;
-  goal.aabb_max.x = -1.59;//atof(argv[3]);
-  goal.aabb_max.y = 2,2;//atof(argv[4]);
-  goal.aabb_max.z = 1.5;
-  goal.delta = 0.02;
-  goal.scaling = 20;
-  goal.pitch_limit = 0.4;
-  goal.thickness = 0.04;
-  ac.sendGoal(goal);
+    goal.frame_id = "/map";
+    goal.aabb_min.x = -2.1;//atof(argv[1]);
+    goal.aabb_min.y = 1.54;//atof(argv[2]);
+    goal.aabb_min.z = .5;
+    goal.aabb_max.x = -1.59;//atof(argv[3]);
+    goal.aabb_max.y = 2,2;//atof(argv[4]);
+    goal.aabb_max.z = 1.5;
+    goal.delta = 0.02;
+    goal.scaling = 20;
+    goal.pitch_limit = 0.4;
+    goal.thickness = 0.04;
+    ac.sendGoal(goal);
 
-  //wait for the action to return
-  bool finished_before_timeout = ac.waitForResult(ros::Duration(30.0));
+    //wait for the action to return
+    bool finished_before_timeout = ac.waitForResult(ros::Duration(30.0));
 
-  if (finished_before_timeout)
-  {
-    actionlib::SimpleClientGoalState state = ac.getState();
-    ROS_INFO("Action finished: %s",state.toString().c_str());
-  }
-  else
-    ROS_INFO("Action did not finish before the time out.");
+    if (finished_before_timeout)
+    {
+        actionlib::SimpleClientGoalState state = ac.getState();
+        ROS_INFO("Action finished: %s",state.toString().c_str());
+    }
+    else
+        ROS_INFO("Action did not finish before the time out.");
 
 
-  //return 0;
+    //return 0;
 }
+
+void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
+{
+    Eigen::Vector4f  	min_pt, max_pt;
+    pcl::getMinMax3D 	( 	*cloud,min_pt,max_pt );
+    min = tf::Vector3(min_pt.x(),min_pt.y(),min_pt.z());
+    max = tf::Vector3(max_pt.x(),max_pt.y(),max_pt.z());
+}
+
+actionlib::SimpleActionClient<mc_graspable::FindGraspablesAction> *mcg_client_ = NULL;
+
+void getGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
+{
+
+    if (!mcg_client_) {
+        mcg_client_ = new actionlib::SimpleActionClient<mc_graspable::FindGraspablesAction> ("mc_graspable", true);
+
+        ROS_INFO("Waiting for action server to start.");
+        // wait for the action server to start
+        mcg_client_->waitForServer(); //will wait for infinite time
+    }
+
+    tf::Vector3 pmin,pmax;
+    minmax3d(pmin,pmax,cloud);
+
+    ROS_INFO("Action server started, sending goal.");
+    // send a goal to the action
+    mc_graspable::FindGraspablesGoal goal;
+
+    goal.cloud_topic = "/mc_graspable_query";
+
+    goal.frame_id = "/map";
+
+    goal.aabb_min.x = pmin.x();
+    goal.aabb_min.y = pmin.y();
+    goal.aabb_min.z = pmin.z();
+    goal.aabb_max.x = pmax.x();
+    goal.aabb_max.y = pmax.y();
+    goal.aabb_max.z = pmax.z();
+    goal.delta = 0.02;
+    goal.scaling = 20;
+    goal.pitch_limit = 0.4;
+    goal.thickness = 0.04;
+    mcg_client_->sendGoal(goal);
+
+
+
+    ros::Rate rt(5);
+    for (size_t k =0; k < 10; k ++) {
+        std::cout << "Publishing cluster on " << goal.cloud_topic << std::endl;
+        pubCloud(goal.cloud_topic, cloud, "/map");
+        ros::spinOnce();
+        rt.sleep();
+    }
+
+
+    //wait for the action to return
+    bool finished_before_timeout = mcg_client_->waitForResult(ros::Duration(30.0));
+
+    if (finished_before_timeout)
+    {
+        actionlib::SimpleClientGoalState state =mcg_client_->getState();
+        ROS_INFO("Action finished: %s",state.toString().c_str());
+    }
+    else
+        ROS_INFO("Action did not finish before the time out.");
+
+
+    //return 0;
+}
+
 
 
 
@@ -342,7 +415,8 @@ void getCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, std::string frame_id
 
 std::map<std::string, ros::Publisher*> cloud_publishers;
 
-void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = "/map")
+//void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = "/map")
+void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id)
 {
     ros::Publisher *cloud_pub;
 
@@ -789,6 +863,8 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr percentage_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 
     //create tabletop representation with one cluster missing at a time
+    int max_idx = -1;
+    double max_perc = 0;
     std::vector<TableTopObject*> obj_excluding;
     for (size_t i = 0; i < clusters.size(); i ++)
     {
@@ -806,27 +882,38 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
                 num_remaining++;
         }
         std::cout << "Removing Cluster " << i << " would reveal " << object_posterior_belief.size() - num_remaining << " of remaining hypotheses " <<
-            " that is "  << 100 * (object_posterior_belief.size() - num_remaining) / object_posterior_belief.size()  << "%" << std::endl;
+                  " that is "  << 100 * (object_posterior_belief.size() - num_remaining) / object_posterior_belief.size()  << "%" << std::endl;
 
         double percentage = (object_posterior_belief.size() - num_remaining) / (double)object_posterior_belief.size();
 
-        for (size_t j = 0; j < clusters[i]->points.size(); j++)
-            {
-                pcl::PointXYZRGB pt;
-                pt.x = clusters[i]->points[j].x;
-                pt.y = clusters[i]->points[j].y;
-                pt.z = clusters[i]->points[j].z;
-                pt.r = percentage * 255;
-                pt.g = 0;
-                pt.b = 255 - (percentage * 255);
-                if (percentage == 0)
-                {
-                    pt.b = 0;
-                    pt.g = 255;
-                }
+        if (percentage >  max_perc) {
+            max_perc = percentage;
+            max_idx = i;
+        }
 
-                percentage_cloud->points.push_back(pt);
+        for (size_t j = 0; j < clusters[i]->points.size(); j++)
+        {
+            pcl::PointXYZRGB pt;
+            pt.x = clusters[i]->points[j].x;
+            pt.y = clusters[i]->points[j].y;
+            pt.z = clusters[i]->points[j].z;
+            pt.r = percentage * 255;
+            pt.g = 0;
+            pt.b = 255 - (percentage * 255);
+            if (percentage == 0)
+            {
+                pt.b = 0;
+                pt.g = 255;
             }
+
+            percentage_cloud->points.push_back(pt);
+        }
+    }
+
+    if (max_idx >= 0)
+    {
+        std::cout << "Getting grasps for cluster #" << max_idx << std::endl;
+        getGrasps(clusters[max_idx]);
     }
 
     pubCloud("percentage", percentage_cloud, "/map");
