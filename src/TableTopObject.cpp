@@ -46,8 +46,9 @@ TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tabl
 }
 
 
-void TableTopObject::addPointCloud(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box)
+void    TableTopObject::initOcto()
 {
+
     if (!has_octo)
     {
 
@@ -65,6 +66,12 @@ void TableTopObject::addPointCloud(const tf::Vector3 sensorOrigin, const double 
         has_octo = true;
 
     }
+
+}
+
+void TableTopObject::addPointCloud(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box)
+{
+    initOcto();
 
     for (size_t i = 0; i < cloud_in_box->points.size(); i++)
     {
@@ -180,6 +187,8 @@ bool TableTopObject::checkCollisionPointcloud(tf::Transform ownTransform, tf::Tr
 
 bool TableTopObject::checkCoveredPointcloud(tf::Transform ownTransform, tf::Transform otherTransform, TableTopObject &otherObject)
 {
+
+    initOcto();
 
     tf::Transform resultingTransform = otherTransform.inverseTimes(ownTransform);
 

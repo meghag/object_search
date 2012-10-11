@@ -33,6 +33,8 @@ public:
 
     void addPointCloud(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box);
 
+    void initOcto();
+
 };
 
 
