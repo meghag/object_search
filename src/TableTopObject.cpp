@@ -40,18 +40,14 @@ TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tabl
     // is that necessary?
     cloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
     has_octo = false;
-
     addPointCloud(sensorOrigin,tableHeight,cloud_in_box);
-
 }
 
 
-void    TableTopObject::initOcto()
+void TableTopObject::initOcto()
 {
-
     if (!has_octo)
     {
-
         double m_res = 0.01;
         double m_probHit = 0.7;
         double m_probMiss = 0.4;
@@ -64,7 +60,6 @@ void    TableTopObject::initOcto()
         m_octoMap->octree.setClampingThresMin(m_thresMin);
         m_octoMap->octree.setClampingThresMax(m_thresMax);
         has_octo = true;
-
     }
 
 }
@@ -153,6 +148,8 @@ bool TableTopObject::checkCollision(tf::Transform ownTransform, tf::Transform ot
 bool TableTopObject::checkCollisionPointcloud(tf::Transform ownTransform, tf::Transform otherTransform, TableTopObject &otherObject)
 {
 
+    initOcto();
+
     tf::Transform resultingTransform = otherTransform.inverseTimes(ownTransform);
 
     geometry_msgs::Transform trans;
@@ -188,6 +185,9 @@ bool TableTopObject::checkCollisionPointcloud(tf::Transform ownTransform, tf::Tr
 bool TableTopObject::checkCoveredPointcloud(tf::Transform ownTransform, tf::Transform otherTransform, TableTopObject &otherObject)
 {
 
+    //if (!has_octo)
+      //  return false;
+
     initOcto();
 
     tf::Transform resultingTransform = otherTransform.inverseTimes(ownTransform);
@@ -209,9 +209,9 @@ bool TableTopObject::checkCoveredPointcloud(tf::Transform ownTransform, tf::Tran
 
         octomap::OcTreeKey key;
 
-        // can this happen ?
+        // this can happen when we have an empty octree, which would of course not cover the object, so return false
         if (!otherObject.m_octoMap->octree.genKey(coord, key))
-            continue;
+            return false;
 
         octomap::OcTreeNode *node = otherObject.m_octoMap->octree.search(key);
 
