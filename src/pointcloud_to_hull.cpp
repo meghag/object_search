@@ -34,63 +34,21 @@ extern "C" {
 
 void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = "/map");
 
-void getGrasps()
-{
-
-    actionlib::SimpleActionClient<mc_graspable::FindGraspablesAction> ac("mc_graspable", true);
-
-    ROS_INFO("Waiting for action server to start.");
-    // wait for the action server to start
-    ac.waitForServer(); //will wait for infinite time
-
-    ROS_INFO("Action server started, sending goal.");
-    // send a goal to the action
-    mc_graspable::FindGraspablesGoal goal;
-
-    goal.cloud_topic = "/head_mount_kinect/depth_registered/points";
-
-    goal.frame_id = "/map";
-    goal.aabb_min.x = -2.1;//atof(argv[1]);
-    goal.aabb_min.y = 1.54;//atof(argv[2]);
-    goal.aabb_min.z = .5;
-    goal.aabb_max.x = -1.59;//atof(argv[3]);
-    goal.aabb_max.y = 2,2;//atof(argv[4]);
-    goal.aabb_max.z = 1.5;
-    goal.delta = 0.02;
-    goal.scaling = 20;
-    goal.pitch_limit = 0.4;
-    goal.thickness = 0.04;
-    ac.sendGoal(goal);
-
-    //wait for the action to return
-    bool finished_before_timeout = ac.waitForResult(ros::Duration(30.0));
-
-    if (finished_before_timeout)
-    {
-        actionlib::SimpleClientGoalState state = ac.getState();
-        ROS_INFO("Action finished: %s",state.toString().c_str());
-    }
-    else
-        ROS_INFO("Action did not finish before the time out.");
-
-
-    //return 0;
-}
-
 void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
     Eigen::Vector4f  	min_pt, max_pt;
-    pcl::getMinMax3D 	( 	*cloud,min_pt,max_pt );
+    pcl::getMinMax3D 	( *cloud,min_pt,max_pt );
     min = tf::Vector3(min_pt.x(),min_pt.y(),min_pt.z());
     max = tf::Vector3(max_pt.x(),max_pt.y(),max_pt.z());
 }
 
 actionlib::SimpleActionClient<mc_graspable::FindGraspablesAction> *mcg_client_ = NULL;
 
-void getGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
+void getGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::Pose> &low, std::vector<tf::Pose> &high)
 {
 
-    if (!mcg_client_) {
+    if (!mcg_client_)
+    {
         mcg_client_ = new actionlib::SimpleActionClient<mc_graspable::FindGraspablesAction> ("mc_graspable", true);
 
         ROS_INFO("Waiting for action server to start.");
@@ -124,7 +82,8 @@ void getGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 
 
     ros::Rate rt(5);
-    for (size_t k =0; k < 10; k ++) {
+    for (size_t k =0; k < 10; k ++)
+    {
         std::cout << "Publishing cluster on " << goal.cloud_topic << std::endl;
         pubCloud(goal.cloud_topic, cloud, "/map");
         ros::spinOnce();
@@ -139,15 +98,118 @@ void getGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
     {
         actionlib::SimpleClientGoalState state =mcg_client_->getState();
         ROS_INFO("Action finished: %s",state.toString().c_str());
+
+        mc_graspable::FindGraspablesResultConstPtr result = mcg_client_->getResult();
+        for (std::vector<geometry_msgs::Pose>::const_iterator it = result->high.poses.begin(); it != result->high.poses.end(); ++it)
+        {
+            tf::Pose act;
+            tf::poseMsgToTF(*it, act);
+            high.push_back(act);
+        }
+        for (std::vector<geometry_msgs::Pose>::const_iterator it = result->low.poses.begin(); it != result->low.poses.end(); ++it)
+        {
+            tf::Pose act;
+            tf::poseMsgToTF(*it, act);
+            low.push_back(act);
+        }
+
     }
     else
         ROS_INFO("Action did not finish before the time out.");
 
-
     //return 0;
 }
 
+bool inside(tf::Vector3 point, tf::Vector3 bbmin, tf::Vector3 bbmax)
+{
+    if ((point.x() > bbmin.x()) && (point.x() < bbmax.x()) &&
+            (point.y() > bbmin.y()) && (point.y() < bbmax.y()) &&
+            (point.z() > bbmin.z()) && (point.z() < bbmax.z()))
+        return true;
+    else
+        return false;
+}
 
+
+void checkGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked)
+{
+    // min coordinates of aabb
+    std::vector<tf::Vector3> bb_min;
+    // max coordinates of aabb
+    std::vector<tf::Vector3> bb_max;
+    // should this bounding box be empty => true or should contain a point => false
+    std::vector<bool> bb_full;
+
+    double xShift = -.0;
+
+    //coarsest of approximation for gripper fingers when gripper is open
+    bb_min.push_back(tf::Vector3(xShift + 0.00,0.03,-.02));
+    bb_max.push_back(tf::Vector3(xShift + 0.05,0.09, .02));
+    bb_full.push_back(false);
+
+    bb_min.push_back(tf::Vector3(xShift + 0.00,-0.09,-.02));
+    bb_max.push_back(tf::Vector3(xShift + 0.05,-0.03, .02));
+    bb_full.push_back(false);
+
+    // we want to be able to approach from far away, so check the space we sweep when approaching and grasping
+    bb_min.push_back(tf::Vector3(xShift - 0.2 ,-0.09,-.03));
+    bb_max.push_back(tf::Vector3(xShift + 0.00, 0.09, .03));
+    bb_full.push_back(false);
+
+    // we want to see some points centered between the grippers
+    bb_min.push_back(tf::Vector3(xShift + 0.00,-0.02,-.02));
+    bb_max.push_back(tf::Vector3(xShift + 0.05, 0.02, .02));
+    bb_full.push_back(true);
+
+    std::vector<size_t> bb_cnt;
+    bb_cnt.resize(bb_min.size());
+
+    // for each grasp
+    for (std::vector<tf::Pose>::iterator it = unchecked.begin(); it!=unchecked.end(); ++it)
+    {
+        std::fill( bb_cnt.begin(), bb_cnt.end(), 0 );
+
+        bool good = true;
+
+        //for each point, points first so that we transform only once, do not transform full pointcloud as we might get lucky and hit a point early
+        // and thus not need to transform all of them
+        //for (int i = 0; (i < cloud->points.size()) && good; ++i)
+        for (int i = 0; (i < cloud->points.size()); ++i)
+        {
+            tf::Vector3 curr(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z);
+            // project point to gripper coordinates
+            curr = (*it).inverse() * curr;
+
+            // check each defined bounding box
+            //for (int k = 0; (k < bb_min.size()) && good; ++k)
+            for (int k = 0; (k < bb_min.size()); ++k)
+            {
+                if (inside(curr, bb_min[k], bb_max[k]))
+                {
+                    bb_cnt[k]++;
+                    if (!bb_full[k])
+                        good = false;
+                }
+
+            }
+        }
+
+        //std::cout << std::endl;
+        for (int j = 0; j < bb_min.size(); j++)
+        {
+            if (bb_full[j] && (bb_cnt[j] < 10))
+                good = false;
+        }
+
+        if (good)
+        {
+            //for (int j = 0; j < bb_min.size(); j++)
+            //std::cout << "bb_cnt" << j << " : " << bb_cnt[j] << std::endl;
+            checked.push_back(*it);
+        }
+    }
+
+}
 
 
 std::string fixed_frame_ = "map";
@@ -816,6 +878,20 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
 
     //pub_belief(object_belief);
 
+    // randomly calculate grasps. fun!
+    if (0)
+    {
+        std::vector<tf::Pose> checked;
+        checkGrasps(cloud_in_box,object_belief,checked);
+        std::cout << "number of good looking grasps : " << checked.size() << std::endl;
+        pub_belief(checked);
+        ros::Rate rt(10);
+        while (ros::ok())
+        {
+            rt.sleep();
+        }
+    }
+
     tf::Transform identity;
     identity.setIdentity();
 
@@ -881,12 +957,15 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
             if (obj.checkCoveredPointcloud(*it,identity,*act))
                 num_remaining++;
         }
+
+        double percentage = (object_posterior_belief.size() == 0 ? 1 : (object_posterior_belief.size() - num_remaining) / (double)object_posterior_belief.size());
+
         std::cout << "Removing Cluster " << i << " would reveal " << object_posterior_belief.size() - num_remaining << " of remaining hypotheses " <<
-                  " that is "  << 100 * (object_posterior_belief.size() - num_remaining) / object_posterior_belief.size()  << "%" << std::endl;
+                  " that is "  << 100 * percentage << "%" << std::endl;
 
-        double percentage = (object_posterior_belief.size() - num_remaining) / (double)object_posterior_belief.size();
 
-        if (percentage >  max_perc) {
+        if (percentage >  max_perc)
+        {
             max_perc = percentage;
             max_idx = i;
         }
@@ -913,11 +992,39 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
     if (max_idx >= 0)
     {
         std::cout << "Getting grasps for cluster #" << max_idx << std::endl;
-        getGrasps(clusters[max_idx]);
+        std::vector<tf::Pose> random,low,high,checked,filtered;
+
+        //getGrasps(clusters[max_idx], low, high);
+
+        //checkGrasps(cloud_in_box,low,checked);
+        //checkGrasps(cloud_in_box,high,checked);
+        tf::Vector3 cluster_min, cluster_max;
+
+        minmax3d(cluster_min, cluster_max, clusters[max_idx]);
+        cluster_min -= tf::Vector3(.1,.1,.1);
+        cluster_max += tf::Vector3(.1,.1,.1);
+
+        for (int k =0; k < 100000; k++)
+        {
+            random.push_back(vdc_pose_bound(bb_min,bb_max,k));
+        }
+
+        ROS_INFO("tick");
+        // should have points of cluster we want to grasp inside
+        checkGrasps(clusters[max_idx],random,filtered);
+        std::cout << "number of filtered grasps : " << filtered.size() << " out of " << random.size() << std::endl;
+        // should not collide with other points either
+        checkGrasps(cloud_in_box,filtered,checked);
+        std::cout << "number of checked grasps : " << checked.size() << " out of " << random.size() << std::endl;
+        ROS_INFO("tock");
+        //checkGrasps(cloud_in_box,random,checked);
+
+
+        pub_belief(checked);
+
     }
 
     pubCloud("percentage", percentage_cloud, "/map");
-
 
     ros::Rate rt(5);
     size_t idx = 0;
