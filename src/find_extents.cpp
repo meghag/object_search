@@ -34,12 +34,24 @@ std::vector<geometry_msgs::Point> find_extents(pcl::PointCloud<PointT> pcd)
 
 	//float dim1, dim2, dim3;
 	PointT pt_minx, pt_miny, pt_minz, pt_maxx, pt_maxy, pt_maxz;
+	
+	size_t dis_x1 = distance(vecx.begin(), it_minx);
+	size_t dis_y1 = distance(vecy.begin(), it_miny);
+	size_t dis_z1 = distance(vecx.begin(), it_minz);
+	size_t dis_x2 = distance(vecx.begin(), it_maxx);
+	size_t dis_y2 = distance(vecy.begin(), it_maxy);
+	size_t dis_z2 = distance(vecy.begin(), it_maxz);
+	
+	pt_minx = pcd.points[dis_x1];
+	pt_maxx = pcd.points[dis_x2];
+	pt_miny = pcd.points[dis_y1];
+	pt_maxy = pcd.points[dis_y2];
+	pt_minz = pcd.points[dis_z1];
+	pt_maxz = pcd.points[dis_z2];
+	
+	
+	/*
 	vector<PointT, Eigen::aligned_allocator<PointT> >::iterator it2 = pcd.points.begin();
-
-	//TODO: we could use size_t indes= std::distance(vecx.begin(), it_minx); to get an index from the iterators
-	// this would be safer as there might be multiple points with the same coordinates in some component of the vector
-	// and it would also safe some time
-
 	for (vector<double>::iterator pos = vecx.begin(); pos != vecx.end(); ++pos) {
 		if (pos == it_minx){
 			pt_minx = *it2;
@@ -71,7 +83,8 @@ std::vector<geometry_msgs::Point> find_extents(pcl::PointCloud<PointT> pcd)
 		}
 		++it2;
 	}
-
+	*/
+	
 	geometry_msgs::Point vertices[6];
 	vertices[0].x = pt_minx.x;
 	vertices[0].y = pt_minx.y;
