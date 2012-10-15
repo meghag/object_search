@@ -1,0 +1,12 @@
+# Ignore all bin directories
+bin
+build
+data
+lib
+msg_gen
+srv_gen
+# Ignore all files ending with ~
+*~
+# Ignore the target directory
+# Matches "target" in any subfolder
+#target/ 
