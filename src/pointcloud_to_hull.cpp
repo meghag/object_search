@@ -857,8 +857,10 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
     //tf::Vector3 bb_min(-1.9,1.6,.875);
     //tf::Vector3 bb_max(-1.6,2.1,1.2);
     //tf::Vector3 bb_min(-2.1,1.6,.875);
-    tf::Vector3 bb_min(-2.1,1.6,.89);
-    tf::Vector3 bb_max(-1.6,2.1,1.2);
+    //tf::Vector3 bb_min(-2.1,1.6,.89);
+    //tf::Vector3 bb_max(-1.6,2.1,1.2);
+    tf::Vector3 bb_min(-1.3,-7.15,.745);
+    tf::Vector3 bb_max(-.82,-6.7,1.2);
 
     getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
 

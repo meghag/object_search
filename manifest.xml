@@ -25,6 +25,7 @@
   <depend package="pr2_controllers_msgs"/>
   <depend package="octomap_ros"/>
   <depend package="mc_graspable"/>
+  <depend package="planning_environment"/>
   <export>
     <cpp cflags="-I${prefix}/include/" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lgpc"/>
   </export>
