@@ -26,6 +26,7 @@
   <depend package="octomap_ros"/>
   <depend package="mc_graspable"/>
   <depend package="planning_environment"/>
+  <depend package="rosbag"/>
   <export>
     <cpp cflags="-I${prefix}/include/" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lgpc"/>
   </export>

@@ -2,6 +2,7 @@
 #include <planning_environment/models/collision_models.h>
 #include <planning_environment/models/model_utils.h>
 #include <arm_navigation_msgs/GetPlanningScene.h>
+#include <rosbag/bag.h>
 
 ros::Publisher vis_marker_array_publisher_good_; //= rh.advertise<visualization_msgs::MarkerArray>("good_state_validity_markers_array", 128, true);
 
@@ -33,7 +34,14 @@ int main (int argc, char **argv)
             ROS_ERROR("Could not get planning scene");
 
 
+        planning_scene_res->planning_scene.collision_map.boxes.clear();
 
+        rosbag::Bag bag;
+        bag.open("planning_scene_res.bag", rosbag::bagmode::Write);
+
+        bag.write("planning_scene_res", ros::Time::now(), *planning_scene_res);
+
+        bag.close();
     }
 
     planning_environment::CollisionModels *collision_models = 0;
@@ -51,6 +59,8 @@ int main (int argc, char **argv)
     long_arm_str[1] = "left";
     std::vector<std::string> arm_names[2];
 
+
+
     {
 
         double jointState[7] = {-1.598047009379525, 0.16332504343852233, -1.209332656362964, -2.110992174861759, 93.14866355338992, -1.5068208800215774, -73.5743854835612};
@@ -62,13 +72,18 @@ int main (int argc, char **argv)
         //collision_models->disableCollisionsForNonUpdatedLinks(long_arm_str[k] + "_arm");
         collision_models->disableCollisionsForNonUpdatedLinks("right_arm");
 
+        for (int k = 0; k < 2; k++) {
+            std::vector<std::string> temp = collision_models->getKinematicModel()->getModelGroup(long_arm_str[k] + "_arm")->getUpdatedLinkModelNames();
+            arm_names[k].insert(arm_names[k].begin(), temp.begin(), temp.end());
+        }
+
         {
 
             planning_scene_res->planning_scene.collision_map.header.frame_id = "/torso_lift_link";
 
             arm_navigation_msgs::OrientedBoundingBox box;
             geometry_msgs::Point32 extents;
-            //extents.x = extents.y = extents.z = .0125;
+            extents.x = extents.y = extents.z = .0125;
             extents.x = extents.y = extents.z = 1.25;
             box.extents = extents;
             geometry_msgs::Point32 axis;
@@ -95,7 +110,7 @@ int main (int argc, char **argv)
         int k = 0;
 
         //for (int j=0; j < 7; j++)
-          //  jointState[j] = 0;
+        //  jointState[j] = 0;
 
         nvalues[arm_str[k] + "_shoulder_pan_joint"] = jointState[0];
         nvalues[arm_str[k] + "_shoulder_lift_joint"] = jointState[1];
@@ -121,7 +136,7 @@ int main (int argc, char **argv)
         else
             ROS_INFO("NO COLLISION");
 
-        if (0)
+
         {
             visualization_msgs::MarkerArray sum_arr;
 
@@ -140,21 +155,27 @@ int main (int argc, char **argv)
                     sum_arr,
                     good_color,
                     "right_arm", //"arms", //long_arm_str[k] + "_arm",
-                    ros::Duration(1),
+                    ros::Duration(100),
                     &arm_names[0]);
 
             good_color.r = 0;
             good_color.g = 0;
             good_color.b = 1;
 
-            collision_models->getAllCollisionPointMarkers(*kinematic_state,
-                    sum_arr,
-                    good_color,
-                    ros::Duration(1));
+            //collision_models->getAllCollisionPointMarkers(*kinematic_state,
+              //      sum_arr,
+                //    good_color,
+                  //  ros::Duration(100));
 
             vis_marker_array_publisher_good_.publish(sum_arr);
         }
 
     }
 
+    ros::Rate rt(10);
+    while (ros::ok())
+    {
+        rt.sleep();
+        ros::spinOnce();
+    }
 }
