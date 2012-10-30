@@ -27,12 +27,20 @@ extern "C" {
 #include <gpcl/gpc.h>
 }
 
+
 #include <ros/ros.h>
 #include <actionlib/client/simple_action_client.h>
 #include <actionlib/client/terminal_state.h>
 #include <mc_graspable/FindGraspablesAction.h>
 
-void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = "/map");
+std::string fixed_frame_ = "tum_os_table";
+//std::string fixed_frame_ = "head_mount_kinect_ir_link";//"map";
+std::string mount_frame_ = "head_mount_link";
+std::string rgb_optical_frame_ = "head_mount_kinect_ir_link";
+std::string rgb_topic_ = "/head_mount_kinect/depth_registered/points";
+
+
+void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = fixed_frame_);
 
 void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
@@ -212,11 +220,6 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::
 }
 
 
-std::string fixed_frame_ = "map";
-//std::string fixed_frame_ = "head_mount_kinect_ir_link";//"map";
-std::string mount_frame_ = "head_mount_link";
-std::string rgb_optical_frame_ = "head_mount_kinect_ir_link";
-std::string rgb_topic_ = "/head_mount_kinect/depth_registered/points";
 
 tf::TransformListener*listener_ = 0L;
 
@@ -772,7 +775,7 @@ void pub_belief(std::vector<tf::Pose> poses)
 {
 
     geometry_msgs::PoseArray ps_ary;
-    ps_ary.header.frame_id = "/map";
+    ps_ary.header.frame_id = fixed_frame_;
 
     for (std::vector<tf::Pose>::iterator it = poses.begin(); it!=poses.end(); it++)
     {
@@ -859,8 +862,11 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
     //tf::Vector3 bb_min(-2.1,1.6,.875);
     //tf::Vector3 bb_min(-2.1,1.6,.89);
     //tf::Vector3 bb_max(-1.6,2.1,1.2);
-    tf::Vector3 bb_min(-1.3,-7.15,.745);
-    tf::Vector3 bb_max(-.82,-6.7,1.2);
+    //tf::Vector3 bb_min(-1.3,-7.15,.745);
+    //tf::Vector3 bb_max(-.82,-6.7,1.2);
+
+    tf::Vector3 bb_min(0,0,0);
+    tf::Vector3 bb_max(.5,.5,.4);
 
     getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
 
@@ -914,7 +920,7 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
 
     tum_os::Clusters clusters_msg;
     {
-        pubCloud("object_cloud", cloud_in_box, "/map");
+        pubCloud("object_cloud", cloud_in_box, fixed_frame_.c_str());
         clusters_msg  = *(ros::topic::waitForMessage<tum_os::Clusters>("/clusters"));
         std::cout << "Clusters : " << clusters_msg.clusters.size() << std::endl;
         for (size_t i = 0; i < clusters_msg.clusters.size(); i++)
@@ -1026,7 +1032,7 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
 
     }
 
-    pubCloud("percentage", percentage_cloud, "/map");
+    pubCloud("percentage", percentage_cloud, fixed_frame_.c_str());
 
     ros::Rate rt(5);
     size_t idx = 0;
@@ -1052,7 +1058,7 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
             hypo_cloud->points.push_back(pt);
         }
 
-        pubCloud("hypothesis", hypo_cloud , "/map");
+        pubCloud("hypothesis", hypo_cloud , fixed_frame_.c_str());
 
         //rt.sleep();
     }
@@ -1277,7 +1283,7 @@ void  test_vdc()
     ros::Publisher pose_ary_pub = nh_->advertise<geometry_msgs::PoseArray>("vdc_poses",0,true);
 
     geometry_msgs::PoseArray ps_ary;
-    ps_ary.header.frame_id = "/map";
+    ps_ary.header.frame_id = fixed_frame_;
 
     int n = 0;
 
