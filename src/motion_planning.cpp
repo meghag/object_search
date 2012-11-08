@@ -13,6 +13,7 @@ ros::Publisher vis_marker_array_publisher_good_; //= rh.advertise<visualization_
 
 static const std::string GET_PLANNING_SCENE_NAME = "/environment_server/get_planning_scene";
 
+
 int main (int argc, char **argv)
 {
 
@@ -37,10 +38,12 @@ int main (int argc, char **argv)
         std::vector<double> seed_state(tmp,tmp+7);
         std::vector<double> solution(tmp,tmp+7);
         int error_code = 0;
+    //- Translation: [0.722, -0.451, 0.023]
+//- Rotation: in Quaternion [-0.523, -0.060, 0.697, 0.487]
 
         geometry_msgs::Pose pose;
-        tf::pointTFToMsg(tf::Point(0.244, -0.542, 0.049), pose.position);
-        tf::quaternionTFToMsg(tf::Quaternion(-0.426, 0.091, 0.645, 0.628), pose.orientation);
+        tf::pointTFToMsg(tf::Point(0.722, -0.451, 0.023), pose.position);
+        tf::quaternionTFToMsg(tf::Quaternion(-0.523, -0.060, 0.697, 0.487), pose.orientation);
 
         std::cout << "Pose " << pose << std::endl;
 
@@ -173,8 +176,6 @@ int main (int argc, char **argv)
         kinematic_state->updateKinematicLinks();
 
         collision_models->disableCollisionsForNonUpdatedLinks("right_arm");
-
-
 
         bool collision = collision_models->isKinematicStateInCollision(*kinematic_state);
 

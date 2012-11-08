@@ -7,7 +7,7 @@ include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
 #  Release        : w/o debug symbols, w/ optimization
 #  RelWithDebInfo : w/ debug symbols, w/ optimization
 #  MinSizeRel     : w/o debug symbols, w/ optimization, stripped binaries
-#set(ROS_BUILD_TYPE RelWithDebInfo)
+set(ROS_BUILD_TYPE RelWithDebInfo)
 
 rosbuild_init()
 
@@ -54,7 +54,7 @@ rosbuild_add_executable(arm_test src/move_arm.cpp)
 
 rosbuild_add_executable(move_head_manual src/move_head_manual.cpp)
 
-rosbuild_add_executable(pointcloud_to_hull src/TableTopObject.cpp src/pointcloud_to_hull.cpp)
+rosbuild_add_executable(pointcloud_to_hull src/TableTopObject.cpp src/pointcloud_to_hull.cpp src/kinematics.cpp)
 target_link_libraries(pointcloud_to_hull gpcl octomap octomath)
 
 rosbuild_add_executable(motion_planning src/motion_planning.cpp)
