@@ -57,4 +57,7 @@ rosbuild_add_executable(move_head_manual src/move_head_manual.cpp)
 rosbuild_add_executable(pointcloud_to_hull src/TableTopObject.cpp src/pointcloud_to_hull.cpp)
 target_link_libraries(pointcloud_to_hull gpcl octomap octomath)
 
+rosbuild_add_executable(ptohm src/TableTopObject.cpp src/pointcloud_to_hull_megha.cpp)
+target_link_libraries(ptohm gpcl octomap octomath)
+
 rosbuild_add_executable(motion_planning src/motion_planning.cpp)
