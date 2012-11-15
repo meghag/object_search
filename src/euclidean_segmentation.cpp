@@ -83,7 +83,7 @@ private:
 
         boost::shared_ptr<const vector<int> > indices (new vector<int> (temp));
         tree->setInputCloud (object_cloud, indices);
-        euclidean_clustering(*object_cloud, *indices, tree, 0.02, cluster_indices, 500, 100000);
+        euclidean_clustering(*object_cloud, *indices, tree, 0.02, cluster_indices, 500, 5000);
 
         int j = 0;
         std::vector<sensor_msgs::PointCloud2> clusters;
@@ -192,7 +192,7 @@ int main (int argc, char** argv)
 {
     ros::init(argc, argv, "euclidean_seg");
     if (argc != 2) {
-        ROS_ERROR("Usage: rosrun tum_os color_seg <option>");
+        ROS_ERROR("Usage: rosrun tum_os euclidean_seg <option>");
         ROS_ERROR("\t \t option = 0 for reading object cloud from pcd file");
         ROS_ERROR("\t \t option = 1 for reading object cloud from a topic");
         return (-1);

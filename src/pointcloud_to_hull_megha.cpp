@@ -885,11 +885,12 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
     tum_os::Clusters clusters_msg;
     {
         pubCloud("object_cloud", cloud_in_box, fixed_frame_.c_str());
+		ROS_INFO("Waiting for message on topic clusters");
         clusters_msg  = *(ros::topic::waitForMessage<tum_os::Clusters>("/clusters"));
         std::cout << "Clusters : " << clusters_msg.clusters.size() << std::endl;
         for (size_t i = 0; i < clusters_msg.clusters.size(); i++)
         {
-            std::cout << "cluster " << i << clusters_msg.clusters[i].width << " * " << clusters_msg.clusters[i].height << std::endl;
+            std::cout << "cluster " << i << " " << clusters_msg.clusters[i].width << " * " << clusters_msg.clusters[i].height << std::endl;
             pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
             pcl::fromROSMsg(clusters_msg.clusters[i], *cloud);
             pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloudrgb (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -1017,6 +1018,8 @@ void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
         pubCloud("hypothesis", hypo_cloud , fixed_frame_.c_str());
         //rt.sleep();
     }
+
+	ROS_INFO("Exiting testOctomap");
 }
 
 void  test_vdc()

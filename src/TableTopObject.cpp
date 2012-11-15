@@ -210,8 +210,10 @@ bool TableTopObject::checkCoveredPointcloud(tf::Transform ownTransform, tf::Tran
         octomap::OcTreeKey key;
 
         // this can happen when we have an empty octree, which would of course not cover the object, so return false
-        if (!otherObject.m_octoMap->octree.genKey(coord, key))
+        if (!otherObject.m_octoMap->octree.genKey(coord, key)) {
+			ROS_ERROR("genKey inside checkCoveredPointcloud returned false");
             return false;
+		}
 
         octomap::OcTreeNode *node = otherObject.m_octoMap->octree.search(key);
 

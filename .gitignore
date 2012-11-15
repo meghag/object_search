@@ -5,8 +5,10 @@ data
 lib
 msg_gen
 srv_gen
+objects
 # Ignore all files ending with ~
 *~
 # Ignore the target directory
 # Matches "target" in any subfolder
-#target/ 
+#target/
+src/tum_os/ 

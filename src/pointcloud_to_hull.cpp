@@ -20,42 +20,69 @@
 #include <pcl/surface/concave_hull.h>
 
 #include <visualization_msgs/Marker.h>
-
 #include <tum_os/Clusters.h>
 
 extern "C" {
 #include <gpcl/gpc.h>
 }
 
-
-#include "rosbag/bag.h"
-#include "rosbag/query.h"
-#include "rosbag/view.h"
-#include <boost/foreach.hpp>
-
-bool data_from_bag = false;
-bool data_to_bag = false;
-std::string data_bag_name = "data.bag";
-
-
 #include <ros/ros.h>
 #include <actionlib/client/simple_action_client.h>
 #include <actionlib/client/terminal_state.h>
 #include <mc_graspable/FindGraspablesAction.h>
+//octomap
+#include <TableTopObject.h>
+//#include <octomap_ros/OctomapROS.h>
 
+#include <cmath>
+#include <iostream>
 
-int get_ik(const int arm, const tf::Pose targetPose, std::vector<double> &jointValues);
+using namespace octomap;
 
-std::string fixed_frame_ = "tum_os_table";
-//std::string fixed_frame_ = "head_mount_kinect_ir_link";//"map";
+//std::string fixed_frame_ = "tum_os_table";
+std::string fixed_frame_ = "base_link";
 std::string mount_frame_ = "head_mount_link";
 std::string rgb_optical_frame_ = "head_mount_kinect_ir_link";
 std::string rgb_topic_ = "/head_mount_kinect/depth_registered/points";
 
-std::string ik_frame_ = "/torso_lift_link";
+actionlib::SimpleActionClient<mc_graspable::FindGraspablesAction> *mcg_client_ = NULL;
 
+tf::TransformListener*listener_ = 0L;
+ros::Publisher *vis_pub_ = 0L;
+ros::NodeHandle *nh_ = 0L;
+ros::Publisher *pose_ary_pub_ = 0L;
 
-void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = fixed_frame_);
+double dist_to_sensor = 1;
+int bases[] = {2,3,5,7,11,13,17,19,23,29};
+gpc_polygon last;
+bool have_last = false;
+std::map<std::string, ros::Publisher*> cloud_publishers;
+
+//void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = fixed_frame_);
+//void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = "/map")
+void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = fixed_frame_)
+{
+    ros::Publisher *cloud_pub;
+    if (cloud_publishers.find(topic_name) == cloud_publishers.end())
+    {
+        cloud_pub = new ros::Publisher();
+        *cloud_pub = nh_->advertise<sensor_msgs::PointCloud2>(topic_name,0,true);
+        cloud_publishers.insert(std::pair<std::string, ros::Publisher*>(topic_name, cloud_pub ));
+        std::cout << "created new publisher" << cloud_pub << std::endl;
+    }
+    else
+    {
+        cloud_pub = cloud_publishers.find(topic_name)->second;
+        std::cout << "found pub on " << cloud_pub->getTopic() << ", reusing it" << std::endl;
+    }
+
+    sensor_msgs::PointCloud2 out; //in map frame
+    pcl::toROSMsg(*cloud,out);
+    out.header.frame_id = frame_id;
+    out.header.stamp = ros::Time::now();
+    cloud_pub->publish(out);
+    ROS_INFO("published frame %s %i x %i points on %s", out.header.frame_id.c_str(), out.height, out.width, topic_name.c_str());
+}
 
 void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
@@ -65,15 +92,11 @@ void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZR
     max = tf::Vector3(max_pt.x(),max_pt.y(),max_pt.z());
 }
 
-actionlib::SimpleActionClient<mc_graspable::FindGraspablesAction> *mcg_client_ = NULL;
-
 void getGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::Pose> &low, std::vector<tf::Pose> &high)
 {
-
     if (!mcg_client_)
     {
         mcg_client_ = new actionlib::SimpleActionClient<mc_graspable::FindGraspablesAction> ("mc_graspable", true);
-
         ROS_INFO("Waiting for action server to start.");
         // wait for the action server to start
         mcg_client_->waitForServer(); //will wait for infinite time
@@ -87,8 +110,7 @@ void getGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::Po
     mc_graspable::FindGraspablesGoal goal;
 
     goal.cloud_topic = "/mc_graspable_query";
-
-    goal.frame_id = "/map";
+    goal.frame_id = fixed_frame_;
 
     goal.aabb_min.x = pmin.x();
     goal.aabb_min.y = pmin.y();
@@ -102,8 +124,6 @@ void getGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::Po
     goal.thickness = 0.04;
     mcg_client_->sendGoal(goal);
 
-
-
     ros::Rate rt(5);
     for (size_t k =0; k < 10; k ++)
     {
@@ -112,7 +132,6 @@ void getGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::Po
         ros::spinOnce();
         rt.sleep();
     }
-
 
     //wait for the action to return
     bool finished_before_timeout = mcg_client_->waitForResult(ros::Duration(30.0));
@@ -135,11 +154,9 @@ void getGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::Po
             tf::poseMsgToTF(*it, act);
             low.push_back(act);
         }
-
     }
     else
         ROS_INFO("Action did not finish before the time out.");
-
     //return 0;
 }
 
@@ -153,17 +170,6 @@ bool inside(tf::Vector3 point, tf::Vector3 bbmin, tf::Vector3 bbmax)
         return false;
 }
 
-class BoxSet
-{
-public:
-
-    //void create_marker
-
-    std::vector<tf::Vector3> bb_min;
-    std::vector<tf::Vector3> bb_max;
-    std::vector<bool> bb_full;
-};
-
 
 void checkGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked)
 {
@@ -175,16 +181,6 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::
     std::vector<bool> bb_full;
 
     double xShift = -.0;
-
-    // we want to see some points centered between the grippers
-    bb_min.push_back(tf::Vector3(xShift + 0.03,-0.02,-.02));
-    bb_max.push_back(tf::Vector3(xShift + 0.04, 0.02, .02));
-    bb_full.push_back(true);
-
-    // we want to see some points centered between the grippers
-    bb_min.push_back(tf::Vector3(xShift + 0.04,-0.02,-.02));
-    bb_max.push_back(tf::Vector3(xShift + 0.05, 0.02, .02));
-    bb_full.push_back(true);
 
     //coarsest of approximation for gripper fingers when gripper is open
     bb_min.push_back(tf::Vector3(xShift + 0.00,0.03,-.02));
@@ -200,6 +196,11 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::
     bb_max.push_back(tf::Vector3(xShift + 0.00, 0.09, .03));
     bb_full.push_back(false);
 
+    // we want to see some points centered between the grippers
+    bb_min.push_back(tf::Vector3(xShift + 0.00,-0.02,-.02));
+    bb_max.push_back(tf::Vector3(xShift + 0.05, 0.02, .02));
+    bb_full.push_back(true);
+
     std::vector<size_t> bb_cnt;
     bb_cnt.resize(bb_min.size());
 
@@ -207,13 +208,12 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::
     for (std::vector<tf::Pose>::iterator it = unchecked.begin(); it!=unchecked.end(); ++it)
     {
         std::fill( bb_cnt.begin(), bb_cnt.end(), 0 );
-
         bool good = true;
 
         //for each point, points first so that we transform only once, do not transform full pointcloud as we might get lucky and hit a point early
         // and thus not need to transform all of them
         //for (int i = 0; (i < cloud->points.size()) && good; ++i)
-        for (int i = 0; (i < cloud->points.size()) && good; ++i)
+        for (size_t i = 0; (i < cloud->points.size()); ++i)
         {
             tf::Vector3 curr(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z);
             // project point to gripper coordinates
@@ -221,7 +221,7 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::
 
             // check each defined bounding box
             //for (int k = 0; (k < bb_min.size()) && good; ++k)
-            for (int k = 0; (k < bb_min.size()); ++k)
+            for (size_t k = 0; (k < bb_min.size()); ++k)
             {
                 if (inside(curr, bb_min[k], bb_max[k]))
                 {
@@ -229,12 +229,11 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::
                     if (!bb_full[k])
                         good = false;
                 }
-
             }
         }
 
         //std::cout << std::endl;
-        for (int j = 0; j < bb_min.size(); j++)
+        for (size_t j = 0; j < bb_min.size(); j++)
         {
             if (bb_full[j] && (bb_cnt[j] < 10))
                 good = false;
@@ -247,58 +246,7 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::
             checked.push_back(*it);
         }
     }
-
 }
-
-void checkGraspsIK(int arm, tf::Stamped<tf::Pose> fixed_to_ik, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked)
-{
-    std::vector<double> result;
-    result.resize(7);
-    std::fill( result.begin(), result.end(), 0 );
-
-    for (std::vector<tf::Pose>::iterator it = unchecked.begin(); it!=unchecked.end(); ++it)
-    {
-        tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(*it);
-        if (get_ik(arm, in_ik_frame, result) == 1)
-            checked.push_back(*it);
-    }
-
-}
-
-
-
-tf::TransformListener*listener_ = 0L;
-
-ros::Publisher *vis_pub_ = 0L;
-
-ros::NodeHandle *nh_ = 0L;
-
-ros::Publisher *pose_ary_pub_ = 0L;
-
-
-double dist_to_sensor = 1;
-
-
-void init()
-{
-    if (!listener_)
-        nh_ = new ros::NodeHandle();
-    if (!listener_)
-        listener_ = new tf::TransformListener();
-    if (!vis_pub_)
-    {
-        vis_pub_ = new ros::Publisher();
-        *vis_pub_ = nh_->advertise<visualization_msgs::Marker>( "visualization_marker", 0 );
-    }
-    //if (!pose_ary_pub_)
-    //{
-    //pose_ary_pub_ = new ros::Publisher();
-    //>*pose_ary_pub_ = nh_->advertise<geometry_msgs::PoseArray>("vdc_poses",0,true);
-    //}
-}
-
-gpc_polygon last;
-bool have_last = false;
 
 void pubPolygon(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_hull)
 {
@@ -399,15 +347,11 @@ void pubPolygon(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_hull)
             //std::cout << "tri" << tristrip.strip[i].vertex[j].x << " " << tristrip.strip[i].vertex[j].y << std::endl;
         }
     }
-
     vis_pub_->publish( marker );
-
 }
-
 
 tf::Stamped<tf::Pose> getPoseIn(const std::string target_frame, tf::Stamped<tf::Pose>src)
 {
-
     if (src.frame_id_ == "NO_ID_STAMPED_DEFAULT_CONSTRUCTION")
     {
         ROS_ERROR("Frame not in TF: %s", src.frame_id_.c_str());
@@ -446,13 +390,15 @@ tf::Stamped<tf::Pose> getPoseIn(const std::string target_frame, tf::Stamped<tf::
 
 tf::Stamped<tf::Pose> getPose(const std::string target_frame,const std::string lookup_frame, ros::Time tm = ros::Time(0))
 {
-
-    init();
+	ROS_INFO("Inside get Pose: Returns a transform between two frames as a TF Stamped Pose");
+  //  init();
     ros::Rate rate(100.0);
 
     tf::StampedTransform transform;
     bool transformOk = false;
     bool had_to_retry = false;
+
+	ROS_INFO("target frame = %s, lookup_frame = %s", target_frame.c_str(), lookup_frame.c_str());
 
     //listener_->waitForTransform(target_frame, lookup_frame, tm, ros::Duration(0.5));
     while (ros::ok() && (!transformOk))
@@ -460,7 +406,8 @@ tf::Stamped<tf::Pose> getPose(const std::string target_frame,const std::string l
         transformOk = true;
         try
         {
-            listener_->lookupTransform(target_frame, lookup_frame,tm, transform);
+            //listener_->lookupTransform(target_frame, lookup_frame,tm, transform);
+			listener_->lookupTransform(target_frame, lookup_frame, ros::Time(0), transform);
         }
         catch (tf::TransformException ex)
         {
@@ -484,12 +431,13 @@ tf::Stamped<tf::Pose> getPose(const std::string target_frame,const std::string l
     ret.setOrigin(transform.getOrigin());
     ret.setRotation(transform.getRotation());
 
+	ROS_INFO("Exiting get Pose");
     return ret;
 }
 
-void getCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, std::string frame_id, ros::Time after, ros::Time *tm = 0)
+void getCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, std::string frame_id, ros::Time after, ros::Time *tm)
 {
-
+	ROS_INFO("MG: Inside get cloud");
     sensor_msgs::PointCloud2 pc;
     bool found = false;
     while (!found)
@@ -499,7 +447,7 @@ void getCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, std::string frame_id
             found = true;
         else
         {
-            //ROS_ERROR("getKinectCloudXYZ cloud too old : stamp %f , target time %f",pc.header.stamp.toSec(), after.toSec());
+            ROS_ERROR("getKinectCloudXYZ cloud too old : stamp %f , target time %f",pc.header.stamp.toSec(), after.toSec());
         }
     }
     if (tm)
@@ -510,7 +458,7 @@ void getCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, std::string frame_id
     net_transform.setOrigin(net_stamped.getOrigin());
     net_transform.setRotation(net_stamped.getRotation());
 
-    sensor_msgs::PointCloud2 pct; //in map frame
+    sensor_msgs::PointCloud2 pct; //in fixed frame
 
     pcl_ros::transformPointCloud(frame_id.c_str(),net_transform,pc,pct);
     pct.header.frame_id = frame_id.c_str();
@@ -518,60 +466,30 @@ void getCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, std::string frame_id
     geometry_msgs::Transform t_msg;
     tf::transformTFToMsg(net_transform, t_msg);
 
-    //std::cout << "CLOUD transf " << pc.header.frame_id << " to " << pct.header.frame_id << " : " << t_msg << std::endl;
+    std::cout << "CLOUD transformed from " << pc.header.frame_id << " to " << pct.header.frame_id << " : " << t_msg << std::endl;
 
     pcl::fromROSMsg(pct, *cloud);
-}
-
-std::map<std::string, ros::Publisher*> cloud_publishers;
-
-//void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = "/map")
-void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id)
-{
-    ros::Publisher *cloud_pub;
-
-    if (cloud_publishers.find(topic_name) == cloud_publishers.end())
-    {
-
-        cloud_pub = new ros::Publisher();
-        *cloud_pub = nh_->advertise<sensor_msgs::PointCloud2>(topic_name,0,true);
-
-        cloud_publishers.insert(std::pair<std::string, ros::Publisher*>(topic_name, cloud_pub ));
-        //std::cout << "created new publisher" << cloud_pub << std::endl;
-    }
-    else
-    {
-        cloud_pub = cloud_publishers.find(topic_name)->second;
-        //std::cout << "found pub on " << cloud_pub->getTopic() << ", reusing it" << std::endl;
-    }
-
-    sensor_msgs::PointCloud2 out; //in map frame
-
-    pcl::toROSMsg(*cloud,out);
-    out.header.frame_id = frame_id;
-    out.header.stamp = ros::Time::now();
-    cloud_pub->publish(out);
-
-    //ROS_INFO("published frame %s %i x %i points on %s", out.header.frame_id.c_str(), out.height, out.width, topic_name.c_str());
+	ROS_INFO("Exiting getCloud");
 }
 
 void getPointsInBox(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr inBox, const tf::Vector3 min, const tf::Vector3 max)
 {
+	ROS_INFO("Inside getPointsInBox: returns a cloud with only those points that lie within a bounding box.");
     Eigen::Vector4f min_pt, max_pt;
 
     min_pt = Eigen::Vector4f(std::min(min.x(), max.x()),std::min(min.y(), max.y()),std::min(min.z(), max.z()), 1);
     max_pt = Eigen::Vector4f(std::max(min.x(), max.x()),std::max(min.y(), max.y()),std::max(min.z(), max.z()), 1);
 
-    //ROS_INFO("min %f %f %f" ,min_pt[0],min_pt[1],min_pt[2]);
-    //ROS_INFO("max %f %f %f" ,max_pt[0],max_pt[1],max_pt[2]);
+    ROS_INFO("min %f %f %f" ,min_pt[0],min_pt[1],min_pt[2]);
+    ROS_INFO("max %f %f %f" ,max_pt[0],max_pt[1],max_pt[2]);
 
-    //ROS_INFO("cloud size : %zu", cloud->points.size());
+    ROS_INFO("cloud size : %zu", cloud->points.size());
 
     boost::shared_ptr<std::vector<int> > indices( new std::vector<int> );
 
     pcl::getPointsInBox(*cloud,min_pt,max_pt,*indices);
 
-    //std::cout << "idx size" << indices->size() << std::endl;
+    std::cout << "idx size" << indices->size() << std::endl;
 
     pcl::ExtractIndices<pcl::PointXYZRGB> ei;
     ei.setInputCloud(cloud);
@@ -581,6 +499,7 @@ void getPointsInBox(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, pcl::PointClou
     pubCloud("debug_cloud", inBox);
 
     ROS_INFO("cloud size after box filtering: %zu = %i * %i", inBox->points.size(), inBox->width, inBox->height);
+	ROS_INFO("Exiting getPointsInBox");	
 }
 
 
@@ -588,6 +507,7 @@ void getPointsInBox(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, pcl::PointClou
 void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_projected)
 //(tf::Vector3 planeNormal, double planeDist,
 {
+	ROS_INFO("Inside projectToPlane");
     pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr plane_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -632,8 +552,6 @@ void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
     seg.segment (*inliers, *coefficients);
     std::cerr << "PointCloud after segmentation has: "
               << inliers->indices.size () << " inliers." << std::endl;
-
-
     std::cout << "Model coefficients: " << coefficients->values[0] << " "
               << coefficients->values[1] << " "
               << coefficients->values[2] << " "
@@ -648,7 +566,7 @@ void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
               << cloud_projected->points.size () << " data points." << std::endl;
 
     pubCloud("cloud_projected", cloud_projected);
-
+	ROS_INFO("Exiting projectToPlane");
 }
 
 void calcHull(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_hull)
@@ -686,24 +604,21 @@ void calcHull(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointClo
 
     if (chull.getDim() > 2)
         ROS_ERROR("CONCAVE HULL IS 3D!");
-
     pubPolygon(cloud_hull);
 
     for (size_t  i = 0; i < cloud_hull->points.size(); i++)
         cloud_hull->points[i].x = dist_to_sensor;
 
     pcl_ros::transformPointCloud(*cloud_hull,*cloud_hull,sensor_to_fixed);
-
     pubCloud("cloud_hull", cloud_hull);
 
     //pcl::PCDWriter writer;
     //writer.write ("table_scene_mug_stereo_textured_hull.pcd", *cloud_hull, false);
 }
 
-
 void test_hull_calc()
 {
-
+	ROS_INFO("MG: Inside test_hull_calc");
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -714,35 +629,41 @@ void test_hull_calc()
 
     ros::Time lookup_time;
 
-    getCloud(cloud, fixed_frame_, ros::Time::now() - ros::Duration(1), &lookup_time);
+	//Tom's
+    //getCloud(cloud, fixed_frame_, ros::Time::now() - ros::Duration(1), &lookup_time);
 
+	//Megha's
+	getCloud(cloud, fixed_frame_, ros::Time(0,0), &lookup_time);
+	ROS_INFO("MG: Got cloud");
     {
-        tf::Vector3 bb_min(-1.9,1.6,.84);
-        tf::Vector3 bb_max(-1.6,2.1,1.2);
+		//Tom's
+        //tf::Vector3 bb_min(-1.9,1.6,.84);
+        //tf::Vector3 bb_max(-1.6,2.1,1.2);
 
+		//Megha's
+		tf::Vector3 bb_min(0.5,-0.4,0.5);
+        tf::Vector3 bb_max(1.0,0.4,1.0);
+		
         getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
-
         projectToPlane(cloud_in_box, cloud_in_box_projected);
-
         calcHull(cloud_in_box_projected, cloud_in_box_projected_hull);
     }
-
+/*
     {
-        tf::Vector3 bb_min(-1.9,1.6,.75);
-        tf::Vector3 bb_max(-1.6,2.1,.84);
+		//Tom's
+        //tf::Vector3 bb_min(-1.9,1.6,.75);
+        //tf::Vector3 bb_max(-1.6,2.1,.84);
 
+		//Megha's
+		tf::Vector3 bb_min(0.5,-0.4,0.8);
+        tf::Vector3 bb_max(1.2,0.4,1.0);
+		
         getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
-
         projectToPlane(cloud_in_box, cloud_in_box_projected);
-
         calcHull(cloud_in_box_projected, cloud_in_box_projected_hull);
     }
-
+*/
 }
-
-
-#include <cmath>
-#include <iostream>
 
 //van der corput sequence
 double vdc(int n, double base = 2)
@@ -755,8 +676,6 @@ double vdc(int n, double base = 2)
     }
     return vdc;
 }
-
-int bases[] = {2,3,5,7,11,13,17,19,23,29};
 
 //get the nth element of a dense sequence of poses filling 0..1 in x, y, z and the SO(3) for rotation
 // based on van der corput sequence with relatively prime bases
@@ -785,14 +704,6 @@ tf::Pose vdc_pose_bound(tf::Vector3 min, tf::Vector3 max, int n)
     return ret;
 }
 
-//octomap
-
-#include <TableTopObject.h>
-
-//#include <octomap_ros/OctomapROS.h>
-
-using namespace octomap;
-
 struct lex_compare
 {
     bool operator() (const octomath::Vector3& lhs, const octomath::Vector3& rhs) const
@@ -811,64 +722,38 @@ void insert_pointcloud(OcTreeROS *octoMap,tf::Point sensor_origin, pcl::PointClo
 {
     geometry_msgs::Point point;
     tf::pointTFToMsg(sensor_origin, point);
-
     octoMap->insertScan(*inBox, point );
 }
 
-
-std::map<std::string, ros::Publisher*> belief_publishers;
-
-void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses)
+void pub_belief(std::vector<tf::Pose> poses)
 {
-
-    ros::Publisher *pose_ary_pub;
-
-    if (belief_publishers.find(topic_name) == belief_publishers.end())
-    {
-
-        pose_ary_pub = new ros::Publisher();
-
-        *pose_ary_pub = nh_->advertise<geometry_msgs::PoseArray>(topic_name,0,true);
-
-        belief_publishers.insert(std::pair<std::string, ros::Publisher*>(topic_name, pose_ary_pub ));
-        //std::cout << "created new publisher" << cloud_pub << std::endl;
-    }
-    else
-    {
-        pose_ary_pub = belief_publishers.find(topic_name)->second;
-        //std::cout << "found pub on " << cloud_pub->getTopic() << ", reusing it" << std::endl;
-    }
-
+	ROS_INFO("Inside pub_belief");
     geometry_msgs::PoseArray ps_ary;
     ps_ary.header.frame_id = fixed_frame_;
 
-    for (std::vector<tf::Pose>::const_iterator it = poses.begin(); it!=poses.end(); it++)
+    for (std::vector<tf::Pose>::iterator it = poses.begin(); it!=poses.end(); it++)
     {
         geometry_msgs::Pose pose_msg;
         tf::poseTFToMsg(*it, pose_msg);
         ps_ary.poses.push_back(pose_msg);
     }
-
-    pose_ary_pub->publish(ps_ary);
-
+    pose_ary_pub_->publish(ps_ary);
+	ROS_INFO("Exiting pub_belief");
 }
 
-
-
-void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::Pose> fixed_to_ik, tf::Stamped<tf::Pose> sensorsInMap)
-
-//void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_hull)
+void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_hull)
 {
-
-
+	ROS_INFO("Inside test octomap");
     int n = 0;
-
     //generate object we search as a pointcloud
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr object_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+	
+	ROS_INFO("Filling the point cloud for my object");
     for (int i=0; i < 100; i++)
     {
         tf::Pose act = vdc_pose(n++);
         act.setOrigin(tf::Vector3(0,0,0));
+//		act.setOrigin(tf::Vector3(0.75,0,0.2));
         tf::Pose rel;
         rel.setOrigin(tf::Vector3(.0125,0,0));
         //rel.setOrigin(tf::Vector3(.05,0,0));
@@ -889,9 +774,12 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     }
 
     //generate a tabletopobject representing the object we search
+	ROS_INFO("Creating a TableTop Object for my object");
     TableTopObject obj(object_cloud);
+	ROS_INFO("Publishing my object cloud on topic my_object");
+    pubCloud("my_object", object_cloud, fixed_frame_);
 
-    //pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_table (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -899,9 +787,10 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
 
     ros::Time lookup_time;
 
-    //! get the pointcloud
+	ROS_INFO("Getting the kinect cloud");
     //getCloud(cloud, fixed_frame_, ros::Time::now() - ros::Duration(1), &lookup_time);
-
+	getCloud(cloud, fixed_frame_, ros::Time(0,0), &lookup_time);
+	
     ros::Time before = ros::Time::now();
 
 // {
@@ -912,6 +801,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     double m_thresMin = 0.12;
     double m_thresMax = 0.97;
 
+	ROS_INFO("Initializing octree");
     OcTreeROS *m_octoMap = new OcTreeROS(m_res);
     m_octoMap->octree.setProbHit(m_probHit);
     m_octoMap->octree.setProbMiss(m_probMiss);
@@ -934,42 +824,47 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     //tf::Vector3 bb_min(-1.3,-7.15,.745);
     //tf::Vector3 bb_max(-.82,-6.7,1.2);
 
-    tf::Vector3 bb_min(0,0,0.03);
-    tf::Vector3 bb_max(.5,.5,.4);
+	//Tom's
+    //tf::Vector3 bb_min(0,0,0);
+    //tf::Vector3 bb_max(.5,.5,.4);
 
+	//Megha's
+//	tf::Vector3 bb_min(0, 0, 0);
+// tf::Vector3 bb_max(1.0,0.4,1.2);
+
+	ROS_INFO("Defining bounding box");
+	tf::Vector3 bb_min(0.5,-0.4,0.65);
+    tf::Vector3 bb_max(1.0,0.4,1.0);
+
+	ROS_INFO("Getting the points inside the bbx");
     getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
 
+    tf::Stamped<tf::Pose> sensorsInMap = getPose(fixed_frame_.c_str(),rgb_optical_frame_.c_str());
 
-    //! get sensor to map
-    //tf::Stamped<tf::Pose> sensorsInMap = getPose(fixed_frame_.c_str(),rgb_optical_frame_.c_str());
-
-
+	ROS_INFO("Creating a TableTopObject for cloud in box");
     TableTopObject myCluster(sensorsInMap.getOrigin(), bb_min.z(), cloud_in_box);
 
-    //pubCloud("cluster_volume", myCluster.getAsCloud() , "/map");
+	ROS_INFO("Publishing the cloud in box on topic cluster_volume");
+    pubCloud("cluster_volume", myCluster.getAsCloud() , fixed_frame_);
 
     ROS_INFO("before creating samples");
     std::vector<tf::Pose> object_belief;
-    for (int k =0; k < 100000; k++)
-    {
+    for (int k =0; k < 1000000; k++)
         object_belief.push_back(vdc_pose_bound(bb_min,bb_max,k));
-    }
     ROS_INFO("samples created");
 
+	//ROS_INFO("Publishing object belief on vdc_poses");
     //pub_belief(object_belief);
-
     // randomly calculate grasps. fun!
     if (0)
     {
         std::vector<tf::Pose> checked;
         checkGrasps(cloud_in_box,object_belief,checked);
         std::cout << "number of good looking grasps : " << checked.size() << std::endl;
-        pub_belief("vdc_poses",checked);
+        pub_belief(checked);
         ros::Rate rt(10);
         while (ros::ok())
-        {
             rt.sleep();
-        }
     }
 
     tf::Transform identity;
@@ -983,25 +878,26 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     }
 
     ROS_INFO("samples checked");
-
     std::cout << "size of object belief " << object_posterior_belief.size() << std::endl;
 
-    pub_belief("vdc_poses",object_posterior_belief);
-
+    pub_belief(object_posterior_belief);
+	ROS_INFO("Published object posterior belief poses on vdc_poses");
+	
     std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr > clusters;
-
     tum_os::Clusters clusters_msg;
     {
         pubCloud("object_cloud", cloud_in_box, fixed_frame_.c_str());
-        //! get the clusters
+		ROS_INFO("Waiting for message on topic clusters");
         clusters_msg  = *(ros::topic::waitForMessage<tum_os::Clusters>("/clusters"));
         std::cout << "Clusters : " << clusters_msg.clusters.size() << std::endl;
         for (size_t i = 0; i < clusters_msg.clusters.size(); i++)
         {
-            std::cout << "cluster " << i << clusters_msg.clusters[i].width << " * " << clusters_msg.clusters[i].height << std::endl;
+            std::cout << "cluster " << i << " " << clusters_msg.clusters[i].width << " * " << clusters_msg.clusters[i].height << std::endl;
             pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
             pcl::fromROSMsg(clusters_msg.clusters[i], *cloud);
+			ROS_INFO("After converting cluster cloud PointCloud2 to PointCloud, size of cloud = %zu", cloud->points.size());
             pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloudrgb (new pcl::PointCloud<pcl::PointXYZRGB>);
+			ROS_INFO("Creating a colorless cloud for this cluster");
             for (size_t j = 0; j < cloud->points.size(); j++)
             {
                 pcl::PointXYZRGB pt;
@@ -1013,6 +909,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
                 pt.b = 0;
                 cloudrgb->points.push_back(pt);
             }
+			ROS_INFO("Done creating colorless cloud");
             clusters.push_back(cloudrgb);
         }
     }
@@ -1043,8 +940,6 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
 
         std::cout << "Removing Cluster " << i << " would reveal " << object_posterior_belief.size() - num_remaining << " of remaining hypotheses " <<
                   " that is "  << 100 * percentage << "%" << std::endl;
-
-
         if (percentage >  max_perc)
         {
             max_perc = percentage;
@@ -1065,22 +960,16 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
                 pt.b = 0;
                 pt.g = 255;
             }
-
             percentage_cloud->points.push_back(pt);
         }
     }
 
-    //! get the pose from fixed to ik
-    //tf::Stamped<tf::Pose> fixed_to_ik = getPose(fixed_frame_, ik_frame_);
-    //tf::Stamped<tf::Pose> fixed_to_ik = getPose(fixed_frame_, ik_frame_);
-
     if (max_idx >= 0)
     {
         std::cout << "Getting grasps for cluster #" << max_idx << std::endl;
-        std::vector<tf::Pose> random,low,high,checked,filtered, reachable;
+        std::vector<tf::Pose> random,low,high,checked,filtered;
 
         //getGrasps(clusters[max_idx], low, high);
-
         //checkGrasps(cloud_in_box,low,checked);
         //checkGrasps(cloud_in_box,high,checked);
         tf::Vector3 cluster_min, cluster_max;
@@ -1100,79 +989,55 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
         std::cout << "number of filtered grasps : " << filtered.size() << " out of " << random.size() << std::endl;
         // should not collide with other points either
         checkGrasps(cloud_in_box,filtered,checked);
-        std::cout << "number of checked grasps : " << checked.size() << " out of " << filtered.size() << std::endl;
+        std::cout << "number of checked grasps : " << checked.size() << " out of " << random.size() << std::endl;
         ROS_INFO("tock");
         //checkGrasps(cloud_in_box,random,checked);
-
-        checkGraspsIK(0,fixed_to_ik,checked,reachable);
-
-        std::cout << "number of reachable grasps : " << reachable.size() << " out of " << checked.size() << std::endl;
-
-        pub_belief("vdc_poses",checked);
-
-        pub_belief("reachable_grasps",reachable);
-
+        pub_belief(checked);
     }
 
     pubCloud("percentage", percentage_cloud, fixed_frame_.c_str());
 
     ros::Rate rt(5);
     size_t idx = 0;
-    if (0)
-        while (ros::ok())
+    while (ros::ok())
+    {
+        idx ++;
+        if (idx == object_posterior_belief.size())
+            idx = 0;
+
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr hypo_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+        //std::cout << "k " << idx<< " size " << obj.cloud->points.size() << std::endl;
+        for (size_t i = 0; i < obj.cloud->points.size(); ++i)
         {
-            idx ++;
-            if (idx == object_posterior_belief.size())
-                idx = 0;
-
-            pcl::PointCloud<pcl::PointXYZRGB>::Ptr hypo_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
-            //std::cout << "k " << idx<< " size " << obj.cloud->points.size() << std::endl;
-            for (size_t i = 0; i < obj.cloud->points.size(); ++i)
-            {
-                tf::Vector3 vec(obj.cloud->points[i].x, obj.cloud->points[i].y, obj.cloud->points[i].z);
-                vec = object_posterior_belief[idx] * vec;
-                pcl::PointXYZRGB pt;
-                pt.x = vec.x();
-                pt.y = vec.y();
-                pt.z = vec.z();
-                pt.r = 0;
-                pt.g = 0;
-                pt.b = 1;
-                hypo_cloud->points.push_back(pt);
-            }
-
-            pubCloud("hypothesis", hypo_cloud , fixed_frame_.c_str());
-
-            //rt.sleep();
+            tf::Vector3 vec(obj.cloud->points[i].x, obj.cloud->points[i].y, obj.cloud->points[i].z);
+            vec = object_posterior_belief[idx] * vec;
+            pcl::PointXYZRGB pt;
+            pt.x = vec.x();
+            pt.y = vec.y();
+            pt.z = vec.z();
+            pt.r = 0;
+            pt.g = 0;
+            pt.b = 1;
+            hypo_cloud->points.push_back(pt);
         }
+        pubCloud("hypothesis", hypo_cloud , fixed_frame_.c_str());
+        //rt.sleep();
+    }
+
+	ROS_INFO("Exiting testOctomap");
 }
-
-
 
 void  test_vdc()
 {
-    /*for (int base = 0; base < 6; ++base)
-    {
-        std::cout << "Base " << base << " : " << bases[base] << "\n";
-        for (int n = 0; n <= bases[base] * 2 + 1 ; ++n)
-        {
-            std::cout << vdc(n, (float) bases[base]) << " ";
-        }
-        std::cout << "\n\n";
-    }*/
-
     ros::Publisher pose_ary_pub = nh_->advertise<geometry_msgs::PoseArray>("vdc_poses",0,true);
-
     geometry_msgs::PoseArray ps_ary;
     ps_ary.header.frame_id = fixed_frame_;
 
     int n = 0;
-
     ros::Rate rt(5);
 
     while (ros::ok())
     {
-
         for (int i=0; i < 1000; i++)
         {
             tf::Pose act = vdc_pose(n++);
@@ -1181,127 +1046,49 @@ void  test_vdc()
             //std::cout << pose_msg << std::endl;
             ps_ary.poses.push_back(pose_msg);
         }
-
         pose_ary_pub.publish(ps_ary);
-
         rt.sleep();
-
         ros::spinOnce();
     }
-
 }
 //2 3 5 7 11 13 17
 
-void test_search()
+//void test_search()
+//{
+//}
+
+void init()
 {
-
+    if (!listener_)
+        nh_ = new ros::NodeHandle();
+    if (!listener_)
+        listener_ = new tf::TransformListener();
+    if (!vis_pub_)
+    {
+        vis_pub_ = new ros::Publisher();
+        *vis_pub_ = nh_->advertise<visualization_msgs::Marker>( "visualization_marker", 0 );
+    }
+    if (!pose_ary_pub_)
+    {
+        pose_ary_pub_ = new ros::Publisher();
+        *pose_ary_pub_ = nh_->advertise<geometry_msgs::PoseArray>("vdc_poses",0,true);
+    }
+	ROS_INFO("MG: Exiting init");
 }
-
 
 int main(int argc,char **argv)
 {
-
     ros::init(argc, argv, "pointcloud_to_hull");
-
     init();
-
-    std::cout << argc << std::endl;
-
-    if ((argc>1) && (atoi(argv[1])==1))
-    {
-        std::cout << "from bag" << std::endl;
-        data_from_bag = true;
-    }
-
-
-    if ((argc>1) && (atoi(argv[1])==2))
-    {
-        data_to_bag = true;
-        std::cout << "to bag" << std::endl;
-    }
-
-    if (argc>2)
-    {
-        data_bag_name = argv[2];
-    }
-
-
-    //test_vdc();
-
+   // test_vdc();
     //test_search();
-
-    ros::Rate rt(1);
-
-    //while (ros::ok())
-    //{
-    //  rt.sleep();
-    //test_hull_calc();
-
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
-    tf::Stamped<tf::Pose> fixed_to_ik;
-    tf::Stamped<tf::Pose> sensorsInMap;
-
-    if (!data_from_bag)
-    {
-        getCloud(cloud, fixed_frame_, ros::Time::now() - ros::Duration(1));
-        fixed_to_ik = getPose(fixed_frame_, ik_frame_);
-        sensorsInMap = getPose(fixed_frame_.c_str(),rgb_optical_frame_.c_str());
-
-        if (data_to_bag)
-        {
-            sensor_msgs::PointCloud2 cloud_msg;
-            pcl::toROSMsg(*cloud,cloud_msg);
-            geometry_msgs::PoseStamped fixed_to_ik_msg;
-            tf::poseStampedTFToMsg(fixed_to_ik,fixed_to_ik_msg);
-            geometry_msgs::PoseStamped sensorsInMap_msg;
-            tf::poseStampedTFToMsg(sensorsInMap,sensorsInMap_msg);
-            rosbag::Bag bag;
-            bag.open(data_bag_name, rosbag::bagmode::Write);
-            bag.write("/cloud", ros::Time::now(), cloud_msg);
-            bag.write("/fixed_to_ik", ros::Time::now(), fixed_to_ik_msg);
-            bag.write("/sensor_in_map", ros::Time::now(), sensorsInMap_msg);
-            bag.close();
-        }
-    }
-    else
-    {
-        rosbag::Bag bag;
-        bag.open(data_bag_name, rosbag::bagmode::Read);
-
-        rosbag::View view(bag);
-
-        BOOST_FOREACH(rosbag::MessageInstance const m, view)
-        {
-            if (m.getTopic() == "/cloud")
-            {
-                sensor_msgs::PointCloud2 ::ConstPtr msg_in = m.instantiate<sensor_msgs::PointCloud2 >();
-                pcl::fromROSMsg(*msg_in, *cloud);
-            }
-            if (m.getTopic() == "/fixed_to_ik")
-            {
-                geometry_msgs::PoseStamped::ConstPtr msg_in = m.instantiate<geometry_msgs::PoseStamped>();
-                tf::poseStampedMsgToTF(*msg_in, fixed_to_ik);
-            }
-            if (m.getTopic() == "/sensor_in_map")
-            {
-                geometry_msgs::PoseStamped::ConstPtr msg_in = m.instantiate<geometry_msgs::PoseStamped>();
-                tf::poseStampedMsgToTF(*msg_in, sensorsInMap);
-            }
-        }
-
-        bag.close();
-
-    }
-
-
-    testOctomap(cloud, fixed_to_ik, sensorsInMap);
-    //}
-
+//    ros::Rate rt(5);
+	ros::Rate rt(100);
     while (ros::ok())
     {
-        rt.sleep();
-        ros::spinOnce();
+        //rt.sleep();
+       // test_hull_calc();
+        testOctomap();
+		rt.sleep();
     }
-
-
 }
