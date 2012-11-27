@@ -46,6 +46,11 @@ void CollisionTesting::init()
 
 }
 
+void CollisionTesting::setCollisionFrame(std::string frame_id)
+{
+    planning_scene_res->planning_scene.collision_map.header.frame_id = frame_id;
+}
+
 void CollisionTesting::resetPointCloud()
 {
     planning_scene_res->planning_scene.collision_map.boxes.clear();
@@ -91,7 +96,6 @@ bool CollisionTesting::inCollision(int arm, double jointState[])
 {
 
     kinematic_state = collision_models->setPlanningScene(planning_scene_res->planning_scene);
-
 
     nvalues[arm_str[arm] + "_shoulder_pan_joint"] = jointState[0];
     nvalues[arm_str[arm] + "_shoulder_lift_joint"] = jointState[1];

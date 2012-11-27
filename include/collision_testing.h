@@ -20,6 +20,9 @@ public :
 
     void init();
 
+    // change the frame the pointcloud is provided in from the standard torso_lift_link to something else
+    void setCollisionFrame(std::string frame_id);
+
     // set pointcloud to collision environment, replacing previous data
     void setPointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, double pointSize = 0.01);
 
