@@ -1,7 +1,10 @@
-
 #include <collision_testing.h>
 
 static const std::string GET_PLANNING_SCENE_NAME = "/environment_server/get_planning_scene";
+
+ros::Publisher CollisionTesting::vis_marker_array_publisher_;
+
+bool CollisionTesting::publisher_initialized = false;
 
 void CollisionTesting::init()
 {
@@ -44,6 +47,13 @@ void CollisionTesting::init()
         arm_names[k].insert(arm_names[k].begin(), temp.begin(), temp.end());
     }
 
+    //kinematic_state = collision_models->setPlanningScene(planning_scene_res->planning_scene);
+
+    if (!publisher_initialized)
+    {
+        vis_marker_array_publisher_ = nh_.advertise<visualization_msgs::MarkerArray>("good_state_validity_markers_array", 128, true);
+        publisher_initialized = true;
+    }
 }
 
 void CollisionTesting::setCollisionFrame(std::string frame_id)
@@ -63,6 +73,12 @@ void CollisionTesting::setPointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Pt
     addPointCloud(cloud, pointSize);
 }
 
+void CollisionTesting::updateCollisionModel()
+{
+    kinematic_state =   collision_models->setPlanningScene(planning_scene_res->planning_scene);
+}
+
+
 void CollisionTesting::addPointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, double pointSize)
 {
 
@@ -70,8 +86,8 @@ void CollisionTesting::addPointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Pt
     {
         //tf::Point tf_pt(,cloud->points[i].y,cloud->points[i].z);
 
-        arm_navigation_msgs::OrientedBoundingBox box;
 
+        arm_navigation_msgs::OrientedBoundingBox box;
         box.extents.x = box.extents.y = box.extents.z = pointSize;
 
         box.axis.x = box.axis.y = 0;
@@ -95,8 +111,6 @@ void CollisionTesting::addPointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Pt
 bool CollisionTesting::inCollision(int arm, double jointState[])
 {
 
-    kinematic_state = collision_models->setPlanningScene(planning_scene_res->planning_scene);
-
     nvalues[arm_str[arm] + "_shoulder_pan_joint"] = jointState[0];
     nvalues[arm_str[arm] + "_shoulder_lift_joint"] = jointState[1];
     nvalues[arm_str[arm] + "_upper_arm_roll_joint"] =jointState[2];
@@ -117,6 +131,48 @@ bool CollisionTesting::inCollision(int arm, double jointState[])
 
     bool collision = collision_models->isKinematicStateInCollision(*kinematic_state);
 
+    if (publish_markers)
+    {
+        visualization_msgs::MarkerArray sum_arr;
+
+        std_msgs::ColorRGBA good_color;
+
+        good_color.r = collision ? 1 : 0;
+        good_color.g = collision ? 0 : 1;
+        good_color.b = 0;
+        good_color.a = .5;
+
+        char name[255];
+        int id = 0;
+        sprintf(name,"arm%i",id);
+        //for (int k = 0; k < 2; k++)
+        collision_models->getRobotMarkersGivenState(*kinematic_state,
+                sum_arr,
+                good_color,
+                (arm == 0) ? "right_arm" : "left_arm",
+                ros::Duration(100),
+                &arm_names[0]);
+
+        good_color.r = 0;
+        good_color.g = 0;
+        good_color.b = 1;
+
+        //collision_models->getAllCollisionPointMarkers(*kinematic_state,
+        //      sum_arr,
+        //    good_color,
+        //  ros::Duration(100));
+
+        vis_marker_array_publisher_.publish(sum_arr);
+    }
+
     return collision;
 
+}
+
+bool CollisionTesting::inCollision(int arm, std::vector<double> jointState)
+{
+    double jointStateArr[7];
+    for (size_t i = 0; i < 7; ++i)
+        jointStateArr[i] = jointState[i];
+    return inCollision(arm,jointStateArr);
 }

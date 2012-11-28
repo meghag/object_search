@@ -29,11 +29,16 @@ public :
     // add pointcloud to collision environment
     void addPointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, double pointSize = 0.01);
 
+    // has to be called after adding pointcloud
+    void updateCollisionModel();
+
     // reset collision environment to not carry any point obstacles
     void resetPointCloud();
 
     //check a given joint state for an arm for collision
     bool inCollision(int arm, double jointState[]);
+
+    bool inCollision(int arm, std::vector<double> jointState);
 
     arm_navigation_msgs::GetPlanningScene::Response *planning_scene_res;
 
@@ -48,6 +53,12 @@ public :
     std::vector<std::string> arm_names[2];
 
     std::map<std::string, double> nvalues;
+
+    bool publish_markers;
+
+    static ros::Publisher vis_marker_array_publisher_;
+
+    static bool publisher_initialized;
 };
 
 

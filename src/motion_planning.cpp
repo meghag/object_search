@@ -184,7 +184,6 @@ int main (int argc, char **argv)
         else
             ROS_INFO("NO COLLISION");
 
-
         {
             visualization_msgs::MarkerArray sum_arr;
 

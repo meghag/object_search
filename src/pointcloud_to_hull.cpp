@@ -27,6 +27,8 @@ extern "C" {
 #include <gpcl/gpc.h>
 }
 
+#include <collision_testing.h>
+
 
 #include "rosbag/bag.h"
 #include "rosbag/query.h"
@@ -1076,8 +1078,9 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
 
     if (max_idx >= 0)
     {
+        int arm = 0; // right arm
         std::cout << "Getting grasps for cluster #" << max_idx << std::endl;
-        std::vector<tf::Pose> random,low,high,checked,filtered, reachable;
+        std::vector<tf::Pose> random,low,high,checked,filtered, reachable, collision_free;
 
         //getGrasps(clusters[max_idx], low, high);
 
@@ -1104,13 +1107,50 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
         ROS_INFO("tock");
         //checkGrasps(cloud_in_box,random,checked);
 
-        checkGraspsIK(0,fixed_to_ik,checked,reachable);
+        checkGraspsIK(arm,fixed_to_ik,checked,reachable);
 
         std::cout << "number of reachable grasps : " << reachable.size() << " out of " << checked.size() << std::endl;
 
         pub_belief("vdc_poses",checked);
 
         pub_belief("reachable_grasps",reachable);
+
+        CollisionTesting ct(*nh_);
+        ct.init();
+        //add the pointclouds of the clusters we don't want to touch to the obstacles for collision checking
+        if (0)
+        for (size_t i = 0; i < clusters.size(); i ++)
+        {
+            ct.addPointCloud(clusters[i]);
+        }
+
+        //ct.setCollisionFrame(fixed_frame_);
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_torso (new pcl::PointCloud<pcl::PointXYZRGB>);
+
+
+        pcl_ros::transformPointCloud(*cloud,*cloud_torso,fixed_to_ik);
+
+        ct.addPointCloud(cloud_torso);
+
+        ct.updateCollisionModel();
+
+        ct.publish_markers = true;
+
+        std::vector<double> result;
+        result.resize(7);
+        std::fill( result.begin(), result.end(), 0 );
+
+        for (std::vector<tf::Pose>::iterator it = reachable.begin(); it!=reachable.end(); ++it)
+        {
+            tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(*it);
+            if (get_ik(arm, in_ik_frame, result) == 1) {
+                bool inCollision = ct.inCollision(arm, result);
+                if (!inCollision)
+                    collision_free.push_back(*it);
+            }
+        }
+
+        std::cout << "number of collision free grasps : " << collision_free.size() << " out of " << reachable.size() << std::endl;
 
     }
 
