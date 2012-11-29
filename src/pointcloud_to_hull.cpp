@@ -48,7 +48,8 @@ std::string data_bag_name = "data.bag";
 
 int get_ik(const int arm, const tf::Pose targetPose, std::vector<double> &jointValues);
 
-std::string fixed_frame_ = "tum_os_table";
+//std::string fixed_frame_ = "tum_os_table";
+std::string fixed_frame_ = "base_link";
 //std::string fixed_frame_ = "head_mount_kinect_ir_link";//"map";
 std::string mount_frame_ = "head_mount_link";
 std::string rgb_optical_frame_ = "head_mount_kinect_ir_link";
@@ -448,7 +449,7 @@ tf::Stamped<tf::Pose> getPoseIn(const std::string target_frame, tf::Stamped<tf::
 
 tf::Stamped<tf::Pose> getPose(const std::string target_frame,const std::string lookup_frame, ros::Time tm = ros::Time(0))
 {
-
+	ROS_INFO("MG: Inside get Pose: Returns a transform between two frames as a TF Stamped Pose");
     init();
     ros::Rate rate(100.0);
 
@@ -462,7 +463,8 @@ tf::Stamped<tf::Pose> getPose(const std::string target_frame,const std::string l
         transformOk = true;
         try
         {
-            listener_->lookupTransform(target_frame, lookup_frame,tm, transform);
+            //listener_->lookupTransform(target_frame, lookup_frame,tm, transform);
+            listener_->lookupTransform(target_frame, lookup_frame, ros::Time(0), transform);
         }
         catch (tf::TransformException ex)
         {
@@ -486,12 +488,13 @@ tf::Stamped<tf::Pose> getPose(const std::string target_frame,const std::string l
     ret.setOrigin(transform.getOrigin());
     ret.setRotation(transform.getRotation());
 
+    ROS_INFO("MG: Exiting get Pose");
     return ret;
 }
 
 void getCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, std::string frame_id, ros::Time after, ros::Time *tm = 0)
 {
-
+	ROS_INFO("MG: Inside get cloud");
     sensor_msgs::PointCloud2 pc;
     bool found = false;
     while (!found)
@@ -501,7 +504,7 @@ void getCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, std::string frame_id
             found = true;
         else
         {
-            //ROS_ERROR("getKinectCloudXYZ cloud too old : stamp %f , target time %f",pc.header.stamp.toSec(), after.toSec());
+            ROS_ERROR("getKinectCloudXYZ cloud too old : stamp %f , target time %f",pc.header.stamp.toSec(), after.toSec());
         }
     }
     if (tm)
@@ -520,9 +523,10 @@ void getCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, std::string frame_id
     geometry_msgs::Transform t_msg;
     tf::transformTFToMsg(net_transform, t_msg);
 
-    //std::cout << "CLOUD transf " << pc.header.frame_id << " to " << pct.header.frame_id << " : " << t_msg << std::endl;
+    std::cout << "CLOUD transf " << pc.header.frame_id << " to " << pct.header.frame_id << " : " << t_msg << std::endl;
 
     pcl::fromROSMsg(pct, *cloud);
+    ROS_INFO("MG: Exiting getCloud");
 }
 
 std::map<std::string, ros::Publisher*> cloud_publishers;
@@ -559,15 +563,16 @@ void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZ
 
 void getPointsInBox(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr inBox, const tf::Vector3 min, const tf::Vector3 max)
 {
+	ROS_INFO("MG: Inside getPointsInBox: returns a cloud with only those points that lie within a bounding box.");
     Eigen::Vector4f min_pt, max_pt;
 
     min_pt = Eigen::Vector4f(std::min(min.x(), max.x()),std::min(min.y(), max.y()),std::min(min.z(), max.z()), 1);
     max_pt = Eigen::Vector4f(std::max(min.x(), max.x()),std::max(min.y(), max.y()),std::max(min.z(), max.z()), 1);
 
-    //ROS_INFO("min %f %f %f" ,min_pt[0],min_pt[1],min_pt[2]);
-    //ROS_INFO("max %f %f %f" ,max_pt[0],max_pt[1],max_pt[2]);
+    ROS_INFO("min %f %f %f" ,min_pt[0],min_pt[1],min_pt[2]);
+    ROS_INFO("max %f %f %f" ,max_pt[0],max_pt[1],max_pt[2]);
 
-    //ROS_INFO("cloud size : %zu", cloud->points.size());
+    ROS_INFO("cloud size : %zu", cloud->points.size());
 
     boost::shared_ptr<std::vector<int> > indices( new std::vector<int> );
 
@@ -583,6 +588,7 @@ void getPointsInBox(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, pcl::PointClou
     pubCloud("debug_cloud", inBox);
 
     ROS_INFO("cloud size after box filtering: %zu = %i * %i", inBox->points.size(), inBox->width, inBox->height);
+    ROS_INFO("MG: Exiting getPointsInBox");
 }
 
 
@@ -590,6 +596,7 @@ void getPointsInBox(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, pcl::PointClou
 void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_projected)
 //(tf::Vector3 planeNormal, double planeDist,
 {
+	ROS_INFO("MG: Inside projectToPlane");
     pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr plane_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -650,7 +657,7 @@ void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
               << cloud_projected->points.size () << " data points." << std::endl;
 
     pubCloud("cloud_projected", cloud_projected);
-
+    ROS_INFO("MG: Exiting projectToPlane");
 }
 
 void calcHull(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_hull)
@@ -705,7 +712,7 @@ void calcHull(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointClo
 
 void test_hull_calc()
 {
-
+	ROS_INFO("MG: Inside test_hull_calc");
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -716,11 +723,21 @@ void test_hull_calc()
 
     ros::Time lookup_time;
 
-    getCloud(cloud, fixed_frame_, ros::Time::now() - ros::Duration(1), &lookup_time);
+    //Tom's
+    //getCloud(cloud, fixed_frame_, ros::Time::now() - ros::Duration(1), &lookup_time);
+
+    //Megha's
+    getCloud(cloud, fixed_frame_, ros::Time(0,0), &lookup_time);
+    ROS_INFO("MG: Got cloud");
 
     {
-        tf::Vector3 bb_min(-1.9,1.6,.84);
-        tf::Vector3 bb_max(-1.6,2.1,1.2);
+		//Tom's
+		//tf::Vector3 bb_min(-1.9,1.6,.84);
+		//tf::Vector3 bb_max(-1.6,2.1,1.2);
+
+		//Megha's
+		tf::Vector3 bb_min(0.5, -0.4, 0.5);
+		tf::Vector3 bb_max(1.0, 0.4, 1.0);
 
         getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
 
@@ -730,8 +747,13 @@ void test_hull_calc()
     }
 
     {
-        tf::Vector3 bb_min(-1.9,1.6,.75);
-        tf::Vector3 bb_max(-1.6,2.1,.84);
+		//Tom's
+		//tf::Vector3 bb_min(-1.9,1.6,.75);
+		//tf::Vector3 bb_max(-1.6,2.1,.84);
+
+		//Megha's
+		tf::Vector3 bb_min(0.5, -0.4, 0.8);
+		tf::Vector3 bb_max(1.2, 0.4, 1.0);
 
         getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
 
@@ -822,7 +844,7 @@ std::map<std::string, ros::Publisher*> belief_publishers;
 
 void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses)
 {
-
+	ROS_INFO("MG: Inside pub_belief");
     ros::Publisher *pose_ary_pub;
 
     if (belief_publishers.find(topic_name) == belief_publishers.end())
@@ -852,7 +874,7 @@ void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses)
     }
 
     pose_ary_pub->publish(ps_ary);
-
+    ROS_INFO("MG: Exiting pub_belief");
 }
 
 
@@ -861,12 +883,12 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
 
 //void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_hull)
 {
-
-
+	ROS_INFO("MG: Inside test octomap");
     int n = 0;
 
     //generate object we search as a pointcloud
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr object_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+    ROS_INFO("MG: Filling the point cloud for my object");
     for (int i=0; i < 100; i++)
     {
         tf::Pose act = vdc_pose(n++);
@@ -891,7 +913,10 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     }
 
     //generate a tabletopobject representing the object we search
+    ROS_INFO("MG: Creating a TableTop Object for my object");
     TableTopObject obj(object_cloud);
+    ROS_INFO("MG: Publishing my object cloud on topic my_object");
+    pubCloud("my_object", object_cloud, fixed_frame_);
 
     //pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_table (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -902,7 +927,9 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     ros::Time lookup_time;
 
     //! get the pointcloud
+    ROS_INFO("MG: Getting the kinect cloud");
     //getCloud(cloud, fixed_frame_, ros::Time::now() - ros::Duration(1), &lookup_time);
+    getCloud(cloud, fixed_frame_, ros::Time(0,0), &lookup_time);
 
     ros::Time before = ros::Time::now();
 
@@ -936,19 +963,28 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     //tf::Vector3 bb_min(-1.3,-7.15,.745);
     //tf::Vector3 bb_max(-.82,-6.7,1.2);
 
-    tf::Vector3 bb_min(0,0,0.03);
-    tf::Vector3 bb_max(.5,.5,.4);
+    ROS_INFO("MG: Defining bounding box");
+    //Tom's
+    //tf::Vector3 bb_min(0,0,0.03);
+    //tf::Vector3 bb_max(.5,.5,.4);
 
+    //Megha's
+    tf::Vector3 bb_min(0.5,-0.4,0.65);
+    tf::Vector3 bb_max(1.0,0.4,1.0);
+
+    ROS_INFO("MG: Getting the points inside the bbx");
     getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
 
 
     //! get sensor to map
     //tf::Stamped<tf::Pose> sensorsInMap = getPose(fixed_frame_.c_str(),rgb_optical_frame_.c_str());
 
-
+    ROS_INFO("MG: Creating a TableTopObject (TTO) for cloud in box");
     TableTopObject myCluster(sensorsInMap.getOrigin(), bb_min.z(), cloud_in_box);
 
     //pubCloud("cluster_volume", myCluster.getAsCloud() , "/map");
+    ROS_INFO("MG: Publishing the cloud in box on topic cloud_in_box_TTOcloud");
+    pubCloud("cloud_in_box_TTOcloud", myCluster.getAsCloud() , fixed_frame_);
 
     ROS_INFO("before creating samples");
     std::vector<tf::Pose> object_belief;
@@ -996,6 +1032,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     {
         pubCloud("object_cloud", cloud_in_box, fixed_frame_.c_str());
         //! get the clusters
+        ROS_INFO("MG: Waiting for message on topic clusters");
         clusters_msg  = *(ros::topic::waitForMessage<tum_os::Clusters>("/clusters"));
         std::cout << "Clusters : " << clusters_msg.clusters.size() << std::endl;
         for (size_t i = 0; i < clusters_msg.clusters.size(); i++)
@@ -1017,6 +1054,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
             }
             clusters.push_back(cloudrgb);
         }
+        ROS_INFO("MG: Created colorless clouds for all clusters and stored them in vector called clusters");
     }
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr percentage_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -1025,6 +1063,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     int max_idx = -1;
     double max_perc = 0;
     std::vector<TableTopObject*> obj_excluding;
+    ROS_INFO("MG: Creating a TableTopObject for every cluster");
     for (size_t i = 0; i < clusters.size(); i ++)
     {
         TableTopObject *act = new TableTopObject();
@@ -1158,7 +1197,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
 
     ros::Rate rt(5);
     size_t idx = 0;
-    if (0)
+    if (0) {
         while (ros::ok())
         {
             idx ++;
@@ -1185,6 +1224,8 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
 
             //rt.sleep();
         }
+    }
+    ROS_INFO("MG: Exiting testOctomap");
 }
 
 
