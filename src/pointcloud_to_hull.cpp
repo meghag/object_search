@@ -889,7 +889,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     //generate object we search as a pointcloud
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr object_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
     ROS_INFO("MG: Filling the point cloud for my object");
-    for (int i=0; i < 100; i++)
+    for (int i=0; i < 500; i++)
     {
         tf::Pose act = vdc_pose(n++);
         act.setOrigin(tf::Vector3(0,0,0));
@@ -917,6 +917,10 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     TableTopObject obj(object_cloud);
     ROS_INFO("MG: Publishing my object cloud on topic my_object");
     pubCloud("my_object", object_cloud, fixed_frame_);
+
+    int user_input;
+    std::cout << "Save the screen shot for my_object. Press 1 and then 'Enter' after you are done." << std::endl;
+    std::cin >> user_input;
 
     //pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_table (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -969,7 +973,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     //tf::Vector3 bb_max(.5,.5,.4);
 
     //Megha's
-    tf::Vector3 bb_min(0.5,-0.4,0.65);
+    tf::Vector3 bb_min(0.5,-0.4,0.69);
     tf::Vector3 bb_max(1.0,0.4,1.0);
 
     ROS_INFO("MG: Getting the points inside the bbx");
@@ -985,6 +989,8 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     //pubCloud("cluster_volume", myCluster.getAsCloud() , "/map");
     ROS_INFO("MG: Publishing the cloud in box on topic cloud_in_box_TTOcloud");
     pubCloud("cloud_in_box_TTOcloud", myCluster.getAsCloud() , fixed_frame_);
+    std::cout << "Save the screen shot for cloud_in_box_TTOCloud. Press 1 and then 'Enter' after you are done." << std::endl;
+    std::cin >> user_input;
 
     ROS_INFO("before creating samples");
     std::vector<tf::Pose> object_belief;
@@ -994,7 +1000,11 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     }
     ROS_INFO("samples created");
 
-    //pub_belief(object_belief);
+    pub_belief("object_belief", object_belief);
+
+    //int user_input;
+    std::cout << "Save the screen shot for object_belief. Press 1 and then 'Enter' after you are done." << std::endl;
+    std::cin >> user_input;
 
     // randomly calculate grasps. fun!
     if (0)
@@ -1024,7 +1034,10 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
 
     std::cout << "size of object belief " << object_posterior_belief.size() << std::endl;
 
-    pub_belief("vdc_poses",object_posterior_belief);
+    pub_belief("object_posterior_belief",object_posterior_belief);
+
+    std::cout << "Save the screen shot for object posterior belief. Press 1 and then 'Enter' after you are done." << std::endl;
+    std::cin >> user_input;
 
     std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr > clusters;
 
@@ -1053,6 +1066,9 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
                 cloudrgb->points.push_back(pt);
             }
             clusters.push_back(cloudrgb);
+            pubCloud("cluster", cloudrgb, fixed_frame_);
+            std::cout << "Save the screen shot for cluster. Press 1 and then 'Enter' after you are done." << std::endl;
+            std::cin >> user_input;
         }
         ROS_INFO("MG: Created colorless clouds for all clusters and stored them in vector called clusters");
     }
@@ -1064,27 +1080,38 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     double max_perc = 0;
     std::vector<TableTopObject*> obj_excluding;
     ROS_INFO("MG: Creating a TableTopObject for every cluster");
-    for (size_t i = 0; i < clusters.size(); i ++)
+    for (size_t i = 0; i < clusters.size(); i++)
     {
         TableTopObject *act = new TableTopObject();
-        for (size_t j = 0; j < clusters.size(); j ++)
+        for (size_t j = 0; j < clusters.size(); j++)
         {
             if (j != i)
                 act->addPointCloud(sensorsInMap.getOrigin(), bb_min.z(), clusters[j]);
         }
         obj_excluding.push_back(act);
+
+        ROS_INFO("MG: Publishing the cloud without cluster %zu on topic sans_cluster_TTOcloud", i);
+        pubCloud("sans_cluster_TTOcloud", act->getAsCloud() , fixed_frame_);
+        std::cout << "Save the screen shot for sans_cluster_TTOCloud. Press 1 and then 'Enter' after you are done." << std::endl;
+        std::cin >> user_input;
+
         size_t num_remaining = 0;
         for (std::vector<tf::Pose>::iterator it = object_posterior_belief.begin(); it!=object_posterior_belief.end(); it++)
         {
             if (obj.checkCoveredPointcloud(*it,identity,*act))
                 num_remaining++;
         }
+        ROS_INFO("Hypotheses still hidden after removing cluster %zu = %zu", i, num_remaining);
 
-        double percentage = (object_posterior_belief.size() == 0 ? 1 : (object_posterior_belief.size() - num_remaining) / (double)object_posterior_belief.size());
+        double percentage;
+        //double percentage = (object_posterior_belief.size() == 0 ? 1 : (object_posterior_belief.size() - num_remaining) / (double)object_posterior_belief.size());
+        if (object_posterior_belief.size() != 0 && num_remaining > 0)
+        	percentage = (object_posterior_belief.size() - num_remaining) / (double)object_posterior_belief.size();
+        else if (object_posterior_belief.size() == 0)
+        	percentage = 1.0;
 
         std::cout << "Removing Cluster " << i << " would reveal " << object_posterior_belief.size() - num_remaining << " of remaining hypotheses " <<
                   " that is "  << 100 * percentage << "%" << std::endl;
-
 
         if (percentage >  max_perc)
         {
@@ -1111,6 +1138,10 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
         }
     }
 
+    ROS_INFO("MG: Publishing the percentage of hypothesis revealed on topic percentage. 0 = green, low = blue, high = purple.");
+    pubCloud("percentage", percentage_cloud, fixed_frame_.c_str());
+    std::cout << "Save the screen shot for percentage_cloud. Press 1 and then 'Enter' after you are done." << std::endl;
+    std::cin >> user_input;
     //! get the pose from fixed to ik
     //tf::Stamped<tf::Pose> fixed_to_ik = getPose(fixed_frame_, ik_frame_);
     //tf::Stamped<tf::Pose> fixed_to_ik = getPose(fixed_frame_, ik_frame_);
@@ -1166,8 +1197,8 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
         //ct.setCollisionFrame(fixed_frame_);
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_torso (new pcl::PointCloud<pcl::PointXYZRGB>);
 
-
         pcl_ros::transformPointCloud(*cloud,*cloud_torso,fixed_to_ik);
+        pubCloud("cloud_torso", cloud_torso);
 
         ct.addPointCloud(cloud_torso);
 
@@ -1192,8 +1223,6 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
         std::cout << "number of collision free grasps : " << collision_free.size() << " out of " << reachable.size() << std::endl;
 
     }
-
-    pubCloud("percentage", percentage_cloud, fixed_frame_.c_str());
 
     ros::Rate rt(5);
     size_t idx = 0;
