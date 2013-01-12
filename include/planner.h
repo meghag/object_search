@@ -50,13 +50,13 @@ extern "C" {
 #include "rosbag/view.h"
 #include <boost/foreach.hpp>
 
-#include "find_extents.h"
-#include "set_marker.h"
+//#include "find_extents.h"
+//#include "set_marker.h"
 //#include "create_marker_array.h"
 //#include "pass_through_gen.h"
 
 #include "TableTopObject.h"
-#include "sampling.h"
+//#include "sampling.h"
 #include <tum_os/Clusters.h>
 #include <tum_os/PlanRequest.h>
 
@@ -84,17 +84,18 @@ bool data_from_bag = false;
 bool data_to_bag = false;
 std::string data_bag_name = "data.bag";
 //Define bounding box
-tf::Vector3 BB_MIN(0.5,-0.4,0.69);
+tf::Vector3 BB_MIN(0.4,-0.4,0.67);
 tf::Vector3 BB_MAX(1.0,0.4,1.0);
 int bases[] = {2,3,5,7,11,13,17,19,23,29};
 int MAX_HORIZON = 2;
 
 std::map<std::string, ros::Publisher*> belief_publishers;
+std::map<std::string, ros::Publisher*> cloud_publishers;
 
 struct Move {
 	unsigned int cluster_idx;		//An index to refer to the object in the collection of visible objects.
 	sensor_msgs::PointCloud2 objectToMove;
-	//tf::Pose sourcePose;
+	tf::Pose sourcePose;
 	tf::Pose destPose;
 
 	//Constructor
@@ -104,25 +105,35 @@ struct Move {
 class Planner
 {
 public:
-	Planner (ros::NodeHandle & n, octomap::OcTree & tree);
+	Planner (ros::NodeHandle& n);	//, octomap::OcTree & tree);
 	~Planner (void);
 
 private:
 	//Functions
-	bool planActionsCallback(object_search_pkg::Plan_Actions::Request &req,
-			object_search_pkg::Plan_Actions::Response &res);
+	//bool planActionsCallback(object_search_pkg::Plan_Actions::Request &req,
+	//		object_search_pkg::Plan_Actions::Response &res);
+
+	void planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_request);
+	void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses);
+	void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id);
+	tf::Stamped<tf::Pose> getPose(const std::string target_frame, const std::string lookup_frame, ros::Time tm);
 
 	void samplePose(sensor_msgs::PointCloud2 target_cloud2,
 					sensor_msgs::PointCloud2 other_cloud2,
-					vector<tf::Pose>& object_posterior_belief);
+					vector<tf::Pose>& object_posterior_belief,
+					bool check_hidden,
+					bool check_visible);
 
-	bool checkHidden(sensor_msgs::PointCloud2 object_cloud2,
+	bool checkHiddenOrVisible(sensor_msgs::PointCloud2 object_cloud2,
 					 sensor_msgs::PointCloud2 other_cloud2, 
 					 tf::Transform ownTransform,
-					 tf::Transform otherTransform);
+					 tf::Transform otherTransform,
+					 bool check_hidden,
+					 bool check_visible);
 
-	bool generatePercentage(tf::Pose object_belief,
-			vector<PointCloud<PointXYZ> clusters);
+	bool generatePercentage(vector<tf::Pose> object_belief,
+			vector<sensor_msgs::PointCloud2> clusters,
+			vector<double>& percentage);
 
 	void findVisible(vector<sensor_msgs::PointCloud2> config,
 			vector<sensor_msgs::PointCloud2>& visible_clusters);
@@ -136,9 +147,12 @@ private:
 			vector<Move>& best_next_action_sequence,
 			double& total_percentage_revealed_so_far);
 
-	void pubCloud(const std::string &topic_name,
-			const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud,
-			std::string frame_id = fixed_frame_);
+	void simulateMove(vector<sensor_msgs::PointCloud2> config,
+			Move move, vector<sensor_msgs::PointCloud2>& new_config);
+
+	//void pubCloud(const std::string &topic_name,
+		//	const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud,
+			//std::string frame_id = fixed_frame_);
 
 	//bool callGraspingService (void);
 	//int findHiddenVoxels(PointCloud<PointXYZ>::Ptr& object);
@@ -148,21 +162,26 @@ private:
 	//Variables
 	ros::NodeHandle n_;
 	ros::Subscriber planRequestSub_;
+	ros::Publisher objectCloudPub_;
+	ros::Publisher clustersPub_;
 
 	//ros::Publisher octreePub_;
-	//ros::Publisher objectCloudPub_;
-	//ros::Publisher raycastPub_;
 	//ros::ServiceServer planActionsServer_;
 	//ros::Subscriber visibleObjectsSub_;
 	//ros::Subscriber octreeSub_;
 	//ros::ServiceClient graspClient_;
 	//ros::ServiceClient planActionsClient_;
 
+	//pcl::PointCloud<pcl::PointXYZRGB>::Ptr object_cloud;
 	sensor_msgs::PointCloud2 targetCloud2_;
 	sensor_msgs::PointCloud2 objectCloud2_;
 	std::vector<sensor_msgs::PointCloud2> clustersDetected_;
-	map<pair<int,PointCloud<PointXYZ> > > knownObjects_;			//Map of known object point clouds with keys as object id
-	map<pair<int,PointCloud<PointXYZ> > > visibleObjects_;			//Map of visible object point clouds with keys as object id
+	double tableHeight_;
+	tf::TransformListener listener;
+	tf::Stamped<tf::Pose> base_to_camera_;
+
+	//map<pair<int,PointCloud<PointXYZ> > > knownObjects_;			//Map of known object point clouds with keys as object id
+	//map<pair<int,PointCloud<PointXYZ> > > visibleObjects_;			//Map of visible object point clouds with keys as object id
 
 	//set<int> occupiedCells_;
 	//set<int> freeCells_;

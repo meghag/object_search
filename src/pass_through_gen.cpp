@@ -1,7 +1,7 @@
 #include "pass_through_gen.h"
 
-//typedef pcl::PointXYZRGB PointT;
-typedef pcl::PointXYZ PointT;
+typedef pcl::PointXYZRGB PointT;
+//typedef pcl::PointXYZ PointT;
 
 int pass_through_gen(pcl::PointCloud<PointT>::Ptr& pcd_orig,
                  pcl::PointCloud<PointT>::Ptr& pcd_filtered,

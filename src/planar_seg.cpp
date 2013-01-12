@@ -3,8 +3,8 @@
 using namespace std;
 using namespace pcl;
 
-//typedef pcl::PointXYZRGB PointT;
-typedef pcl::PointXYZ PointT;
+typedef pcl::PointXYZRGB PointT;
+//typedef pcl::PointXYZ PointT;
 
 int planar_seg(pcl::PointCloud<PointT>::Ptr orig_cloud,
                pcl::PointCloud<PointT>::Ptr p_cloud,

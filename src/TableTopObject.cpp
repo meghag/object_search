@@ -2,24 +2,6 @@
 
 using namespace octomap;
 
-
-void TableTopObject::projectToPlanePerspective(tf::Vector3 sensorOrigin, float tableHeight, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_projected)
-{
-    for (size_t i = 0; i < cloud->points.size(); i++)
-    {
-        tf::Vector3 pt(cloud->points[i].x,cloud->points[i].y,cloud->points[i].z);
-        tf::Vector3 fromSens = pt - sensorOrigin;
-        float factor = (tableHeight - sensorOrigin.z()) / fromSens.z();
-        fromSens *= factor;
-        fromSens += sensorOrigin;
-        pcl::PointXYZRGB newpt = cloud->points[i];
-        newpt.x = fromSens.x();
-        newpt.y = fromSens.y();
-        newpt.z = fromSens.z();
-        cloud_projected->points.push_back(newpt);
-    }
-}
-
 TableTopObject::TableTopObject()
 {
     cloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -43,6 +25,14 @@ TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tabl
     addPointCloud(sensorOrigin,tableHeight,cloud_in_box);
 }
 
+TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB> cloud_in_box)
+{
+    // is that necessary?
+    cloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
+    has_octo = false;
+    addPointCloud2(sensorOrigin,tableHeight,cloud_in_box);
+}
+
 
 void TableTopObject::initOcto()
 {
@@ -55,6 +45,7 @@ void TableTopObject::initOcto()
         double m_thresMax = 0.97;
 
         m_octoMap = new OcTreeROS(m_res);
+		//m_octoMap_copy = new OcTreeROS(m_res);
         m_octoMap->octree.setProbHit(m_probHit);
         m_octoMap->octree.setProbMiss(m_probMiss);
         m_octoMap->octree.setClampingThresMin(m_thresMin);
@@ -64,6 +55,40 @@ void TableTopObject::initOcto()
 
 }
 
+void TableTopObject::projectToPlanePerspective(const tf::Vector3 sensorOrigin, const double tableHeight, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_projected)
+{
+    for (size_t i = 0; i < cloud->points.size(); i++)
+    {
+        tf::Vector3 pt(cloud->points[i].x,cloud->points[i].y,cloud->points[i].z);
+        tf::Vector3 fromSens = pt - sensorOrigin;
+        float factor = (tableHeight - sensorOrigin.z()) / fromSens.z();
+        fromSens *= factor;
+        fromSens += sensorOrigin;
+        pcl::PointXYZRGB newpt = cloud->points[i];
+        newpt.x = fromSens.x();
+        newpt.y = fromSens.y();
+        newpt.z = fromSens.z();
+        cloud_projected->points.push_back(newpt);
+    }
+}
+
+void TableTopObject::projectToPlanePerspective2(const tf::Vector3 sensorOrigin, const double tableHeight, const pcl::PointCloud<pcl::PointXYZRGB>& cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_projected)
+{
+    for (size_t i = 0; i < cloud.points.size(); i++)
+    {
+        tf::Vector3 pt(cloud.points[i].x,cloud.points[i].y,cloud.points[i].z);
+        tf::Vector3 fromSens = pt - sensorOrigin;
+        float factor = (tableHeight - sensorOrigin.z()) / fromSens.z();
+        fromSens *= factor;
+        fromSens += sensorOrigin;
+        pcl::PointXYZRGB newpt = cloud.points[i];
+        newpt.x = fromSens.x();
+        newpt.y = fromSens.y();
+        newpt.z = fromSens.z();
+        cloud_projected->points.push_back(newpt);
+    }
+}
+
 void TableTopObject::addPointCloud(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box)
 {
     initOcto();
@@ -71,6 +96,7 @@ void TableTopObject::addPointCloud(const tf::Vector3 sensorOrigin, const double 
     for (size_t i = 0; i < cloud_in_box->points.size(); i++)
     {
         cloud->points.push_back(cloud_in_box->points[i]);
+		//cloud_copy->points.push_back(cloud_in_box->points[i]);
     }
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -102,9 +128,91 @@ void TableTopObject::addPointCloud(const tf::Vector3 sensorOrigin, const double 
         m_octoMap->octree.updateNode(*it, true, false);
     }
 
+	//*m_octoMap_copy = *m_octoMap;
 
 }
 
+void TableTopObject::addPointCloud2(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB> cloud_in_box)
+{
+    initOcto();
+
+    for (size_t i = 0; i < cloud_in_box.points.size(); i++)
+    {
+        cloud->points.push_back(cloud_in_box.points[i]);
+		//cloud_copy->points.push_back(cloud_in_box.points[i]);
+    }
+
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected(new pcl::PointCloud<pcl::PointXYZRGB>);
+
+    projectToPlanePerspective2(sensorOrigin, tableHeight, cloud_in_box, cloud_in_box_projected);
+
+    octomap::KeySet occupied_cells;
+
+    for (size_t i = 0; i < cloud_in_box.points.size(); ++i)
+    {
+        octomap::KeyRay ray;
+        octomath::Vector3 start;
+        start.x() = cloud_in_box.points[i].x;
+        start.y() = cloud_in_box.points[i].y;
+        start.z() = cloud_in_box.points[i].z;
+        octomath::Vector3 end;
+        end.x() = cloud_in_box_projected->points[i].x;
+        end.y() = cloud_in_box_projected->points[i].y;
+        end.z() = cloud_in_box_projected->points[i].z;
+        m_octoMap->octree.computeRayKeys (start, end, ray);
+        for (octomap::KeyRay::iterator it = ray.begin(); it != ray.end(); it++)
+        {
+            occupied_cells.insert(*it);
+        }
+    }
+
+    for (KeySet::iterator it = occupied_cells.begin(); it != occupied_cells.end(); ++it)
+    {
+        m_octoMap->octree.updateNode(*it, true, false);
+    }
+
+	//*m_octoMap_copy = *m_octoMap;
+
+}
+
+/*
+void TableTopObject::addPointCloudToCopy(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_add)
+{	
+    for (size_t i = 0; i < cloud_to_add->points.size(); i++)
+    {
+        cloud_copy->points.push_back(cloud_to_add->points[i]);
+    }
+	
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_add_projected (new pcl::PointCloud<pcl::PointXYZRGB>);
+	
+    projectToPlanePerspective(sensorOrigin, tableHeight, cloud_to_add, cloud_to_add_projected);
+	
+    octomap::KeySet occupied_cells;
+	
+    for (size_t i = 0; i < cloud_to_add->points.size(); ++i)
+    {
+        octomap::KeyRay ray;
+        octomath::Vector3 start;
+        start.x() = cloud_to_add->points[i].x;
+        start.y() = cloud_to_add->points[i].y;
+        start.z() = cloud_to_add->points[i].z;
+        octomath::Vector3 end;
+        end.x() = cloud_to_add_projected->points[i].x;
+        end.y() = cloud_to_add_projected->points[i].y;
+        end.z() = cloud_to_add_projected->points[i].z;
+        m_octoMap->octree.computeRayKeys (start, end, ray);
+        for (octomap::KeyRay::iterator it = ray.begin(); it != ray.end(); it++)
+        {
+            occupied_cells.insert(*it);
+        }
+    }
+	
+    for (KeySet::iterator it = occupied_cells.begin(); it != occupied_cells.end(); ++it)
+    {
+        m_octoMap_copy->octree.updateNode(*it, true, false);
+    }	
+}
+*/
 
 bool TableTopObject::checkCollision(tf::Transform ownTransform, tf::Transform otherTransform, TableTopObject &otherObject)
 {
