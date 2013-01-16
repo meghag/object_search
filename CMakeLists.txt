@@ -31,33 +31,14 @@ rosbuild_genmsg()
 
 #rosbuild_add_library(${PROJECT_NAME} src/set_marker.cpp)
 
-rosbuild_add_executable(collect_data src/collect_data.cpp
+rosbuild_add_executable(read_data src/read_data.cpp
 				src/planar_seg.cpp
 				src/pass_through_gen.cpp)
-#rosbuild_add_executable(cylinder_seg src/cylindrical_segmentation.cpp)
-rosbuild_add_executable(euclidean_seg src/euclidean_segmentation.cpp)
 
-rosbuild_add_executable(color_seg src/color_segmentation.cpp)
+#rosbuild_add_executable(euclidean_seg src/euclidean_segmentation.cpp)
 
-#rosbuild_add_executable(post_seg src/post_segmentation.cpp
-#				src/find_extents.cpp
-#				src/set_marker.cpp
-#				src/find_centroid.cpp)
+#rosbuild_add_executable(pointcloud_to_hull src/TableTopObject.cpp src/pointcloud_to_hull.cpp src/kinematics.cpp src/collision_testing.cpp)
+#target_link_libraries(pointcloud_to_hull gpcl octomap octomath)
 
-rosbuild_add_executable(pp_try src/pick_place_try.cpp)
-rosbuild_add_executable(push_try src/push_try.cpp src/find_extents.cpp)
-
-rosbuild_add_executable(move_right_arm src/move_right_arm.cpp)
-rosbuild_add_executable(move_left_arm src/move_left_arm.cpp)
-rosbuild_add_executable(move_elbow src/move_elbow.cpp)
-rosbuild_add_executable(arm_test src/move_arm.cpp)
-
-rosbuild_add_executable(move_head_manual src/move_head_manual.cpp)
-
-rosbuild_add_executable(pointcloud_to_hull src/TableTopObject.cpp src/pointcloud_to_hull.cpp src/kinematics.cpp src/collision_testing.cpp)
-target_link_libraries(pointcloud_to_hull gpcl octomap octomath)
-
-rosbuild_add_executable(ptohm src/TableTopObject.cpp src/pointcloud_to_hull_megha.cpp)
-target_link_libraries(ptohm gpcl octomap octomath)
-
-rosbuild_add_executable(motion_planning src/motion_planning.cpp)
+rosbuild_add_executable(planner src/planner.cpp src/TableTopObject.cpp)
+target_link_libraries(planner gpcl octomap octomath)

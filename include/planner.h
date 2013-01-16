@@ -40,6 +40,9 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/project_inliers.h>
 #include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/features/normal_3d.h>
+#include <pcl/kdtree/kdtree.h>
+#include <pcl/segmentation/extract_clusters.h>
 
 extern "C" {
 #include <gpcl/gpc.h>
@@ -57,7 +60,7 @@ extern "C" {
 
 #include "TableTopObject.h"
 //#include "sampling.h"
-#include <tum_os/Clusters.h>
+//#include <tum_os/Clusters.h>
 #include <tum_os/PlanRequest.h>
 
 //#include "object_search_pkg/Plan_Actions.h"
@@ -84,8 +87,8 @@ bool data_from_bag = false;
 bool data_to_bag = false;
 std::string data_bag_name = "data.bag";
 //Define bounding box
-tf::Vector3 BB_MIN(0.4,-0.4,0.67);
-tf::Vector3 BB_MAX(1.0,0.4,1.0);
+//tf::Vector3 BB_MIN(0.4,-0.4,0.67);
+//tf::Vector3 BB_MAX(1.0,0.4,1.0);
 int bases[] = {2,3,5,7,11,13,17,19,23,29};
 int MAX_HORIZON = 2;
 
@@ -99,7 +102,7 @@ struct Move {
 	tf::Pose destPose;
 
 	//Constructor
-	Move(unsigned int c, sensor_msgs::PointCloud2 pcd, tf::Pose p):cluster_idx(c), objectToMove(pcd), destPose(p){}
+	Move(unsigned int c, sensor_msgs::PointCloud2 pcd, tf::Pose s, tf::Pose p):cluster_idx(c), objectToMove(pcd), sourcePose(s), destPose(p){}
 };
 
 class Planner
@@ -117,15 +120,18 @@ private:
 	void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses);
 	void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id);
 	tf::Stamped<tf::Pose> getPose(const std::string target_frame, const std::string lookup_frame, ros::Time tm);
+	void cluster(sensor_msgs::PointCloud2& cloud2, vector<sensor_msgs::PointCloud2>& clusters);
+
+	TableTopObject createTTO(sensor_msgs::PointCloud2& cloud2);
 
 	void samplePose(sensor_msgs::PointCloud2 target_cloud2,
-					sensor_msgs::PointCloud2 other_cloud2,
+					TableTopObject otherCloudTTO,
 					vector<tf::Pose>& object_posterior_belief,
 					bool check_hidden,
 					bool check_visible);
 
 	bool checkHiddenOrVisible(sensor_msgs::PointCloud2 object_cloud2,
-					 sensor_msgs::PointCloud2 other_cloud2, 
+					 TableTopObject otherCloudTTO,
 					 tf::Transform ownTransform,
 					 tf::Transform otherTransform,
 					 bool check_hidden,
@@ -164,8 +170,9 @@ private:
 	ros::Subscriber planRequestSub_;
 	ros::Publisher objectCloudPub_;
 	ros::Publisher clustersPub_;
+	ros::Publisher visiblePub_;
+	ros::Publisher newPosePub_;
 
-	//ros::Publisher octreePub_;
 	//ros::ServiceServer planActionsServer_;
 	//ros::Subscriber visibleObjectsSub_;
 	//ros::Subscriber octreeSub_;
@@ -179,6 +186,8 @@ private:
 	double tableHeight_;
 	tf::TransformListener listener;
 	tf::Stamped<tf::Pose> base_to_camera_;
+	tf::Vector3 BB_MIN;
+	tf::Vector3 BB_MAX;
 
 	//map<pair<int,PointCloud<PointXYZ> > > knownObjects_;			//Map of known object point clouds with keys as object id
 	//map<pair<int,PointCloud<PointXYZ> > > visibleObjects_;			//Map of visible object point clouds with keys as object id
