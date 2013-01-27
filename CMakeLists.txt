@@ -19,7 +19,7 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 #uncomment if you have defined messages
 rosbuild_genmsg()
 #uncomment if you have defined services
-#rosbuild_gensrv()
+rosbuild_gensrv()
 
 #common commands for building c++ executables and libraries
 #rosbuild_add_library(${PROJECT_NAME} src/example.cpp)
@@ -29,7 +29,7 @@ rosbuild_genmsg()
 #rosbuild_add_executable(example examples/example.cpp)
 #target_link_libraries(example ${PROJECT_NAME})
 
-#rosbuild_add_library(${PROJECT_NAME} src/set_marker.cpp)
+rosbuild_add_library(${PROJECT_NAME} src/set_marker.cpp)
 
 rosbuild_add_executable(read_data src/read_data.cpp
 				src/planar_seg.cpp
@@ -42,3 +42,6 @@ rosbuild_add_executable(read_data src/read_data.cpp
 
 rosbuild_add_executable(planner src/planner.cpp src/TableTopObject.cpp)
 target_link_libraries(planner gpcl octomap octomath)
+
+rosbuild_add_executable(manipulator src/manipulator.cpp)
+target_link_libraries(manipulator ${PROJECT_NAME} gpcl)

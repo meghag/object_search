@@ -1,0 +1,12 @@
+int32[] cluster_idx
+sensor_msgs/PointCloud2[] object_to_move
+geometry_msgs/Pose[] source_pose
+geometry_msgs/Pose[] dest_pose
+#tf/LinearMath/Pose source_pose2
+#tf/LinearMath/Pose destPose
+
+#Action to be taken: 1 = Spread, 2 = Tumble
+#int32 action
+#geometry_msgs/Point[] table_extent
+---
+bool result

@@ -52,6 +52,8 @@ extern "C" {
 #include "rosbag/query.h"
 #include "rosbag/view.h"
 #include <boost/foreach.hpp>
+#include <tf/LinearMath/Quaternion.h>
+#include <tf/LinearMath/Matrix3x3.h>
 
 //#include "find_extents.h"
 //#include "set_marker.h"
@@ -62,6 +64,7 @@ extern "C" {
 //#include "sampling.h"
 //#include <tum_os/Clusters.h>
 #include <tum_os/PlanRequest.h>
+#include <tum_os/Execute_Plan.h>
 
 //#include "object_search_pkg/Plan_Actions.h"
 //#include "object_search_pkg/Get_New_PCD.h"
@@ -156,6 +159,8 @@ private:
 	void simulateMove(vector<sensor_msgs::PointCloud2> config,
 			Move move, vector<sensor_msgs::PointCloud2>& new_config);
 
+	bool execute_plan();
+
 	//void pubCloud(const std::string &topic_name,
 		//	const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud,
 			//std::string frame_id = fixed_frame_);
@@ -172,11 +177,11 @@ private:
 	ros::Publisher clustersPub_;
 	ros::Publisher visiblePub_;
 	ros::Publisher newPosePub_;
+	ros::ServiceClient manipulateClient_;
 
 	//ros::ServiceServer planActionsServer_;
 	//ros::Subscriber visibleObjectsSub_;
 	//ros::Subscriber octreeSub_;
-	//ros::ServiceClient graspClient_;
 	//ros::ServiceClient planActionsClient_;
 
 	//pcl::PointCloud<pcl::PointXYZRGB>::Ptr object_cloud;
@@ -188,16 +193,15 @@ private:
 	tf::Stamped<tf::Pose> base_to_camera_;
 	tf::Vector3 BB_MIN;
 	tf::Vector3 BB_MAX;
+	vector<Move> action_sequence_;
+
 
 	//map<pair<int,PointCloud<PointXYZ> > > knownObjects_;			//Map of known object point clouds with keys as object id
 	//map<pair<int,PointCloud<PointXYZ> > > visibleObjects_;			//Map of visible object point clouds with keys as object id
-
 	//set<int> occupiedCells_;
 	//set<int> freeCells_;
-	//pcl::PointCloud<pcl::PointXYZ>::Ptr input_;
 	//float treeResolution_;
 	//octomap::OcTree tree_;
-	//pcl::PointCloud<pcl::PointXYZ>::Ptr objectCloud_;
 };
 
 #endif

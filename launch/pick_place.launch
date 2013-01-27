@@ -1,5 +1,6 @@
 <launch>
-	<node name="euclidean_seg" pkg="tum_os" type="euclidean_seg" args="1" respawn="true" output="screen"/>
-  <node name="collect_data" pkg="tum_os" type="collect_data" respawn="true" output="screen"/>
-	<node name="pick_place" pkg="tum_os" type="pp_try" respawn="false" output="screen"/>
+	<!-- <node name="euclidean_seg" pkg="tum_os" type="euclidean_seg" args="1" respawn="true" output="screen"/> -->
+  	<node name="read_data" pkg="tum_os" type="read_data" respawn="true" output="screen"/>
+	<!-- <node name="pick_place" pkg="tum_os" type="pp_try" respawn="false" output="screen"/> -->
+	<node name="manipulator" pkg="tum_os" type="manipulator" respawn="true" output="screen"/>
 </launch>

@@ -14,7 +14,7 @@ bool touchesTable(pcl::PointCloud<PointXYZRGB> cloud, double table_height)
 			count++;
 	}
 
-	if (count > 50)	//Should be a % of cloud size instead of fixed at 50
+	if (count > 10)	//Should be a % of cloud size instead of fixed at 50
 	{
 		//ROS_INFO("Yes, it does!");
 		return true;
@@ -64,6 +64,21 @@ bool inside(tf::Vector3 point, tf::Vector3 bbmin, tf::Vector3 bbmax)
         return true;
     else
         return false;
+}
+
+geometry_msgs::Pose tfPoseToGeometryPose(tf::Pose tp)
+{
+	geometry_msgs::Pose gp;
+	gp.position.x = tp.getOrigin().getX();
+	gp.position.y = tp.getOrigin().getY();
+	gp.position.z = tp.getOrigin().getZ();
+
+	gp.orientation.x = tp.getRotation().getX();
+	gp.orientation.y = tp.getRotation().getY();
+	gp.orientation.z = tp.getRotation().getZ();
+	gp.orientation.w = tp.getRotation().getW();
+
+	return gp;
 }
 
 sensor_msgs::PointCloud2 concatClouds(vector<sensor_msgs::PointCloud2>& clouds)
@@ -150,6 +165,7 @@ Planner::Planner (ros::NodeHandle& n): n_(n)
 	clustersPub_ = n_.advertise<sensor_msgs::PointCloud2>("one_cluster",1);
 	visiblePub_ = n_.advertise<sensor_msgs::PointCloud2>("visible_clusters",1);
 	newPosePub_ = n_.advertise<sensor_msgs::PointCloud2>("new_pose",1);
+	manipulateClient_ = n_.serviceClient<tum_os::Execute_Plan>("execute_plan");
 
 	//generate object we search as a pointcloud
 	pcl::PointCloud<pcl::PointXYZRGB>::Ptr object_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -158,7 +174,7 @@ Planner::Planner (ros::NodeHandle& n): n_(n)
 	pcl::PointCloud<pcl::PointXYZ> cloud;
 
 	// Fill in the cloud data
-	object_cloud->width  = 500;
+	object_cloud->width  = 100;
 	object_cloud->height = 1;
 	object_cloud->points.resize (object_cloud->width * object_cloud->height);
 
@@ -166,8 +182,8 @@ Planner::Planner (ros::NodeHandle& n): n_(n)
 	for (size_t i = 0; i < object_cloud->points.size (); ++i)
 	{
 		object_cloud->points[i].x = 0.05 * rand () / (RAND_MAX + 1.0f);
-		object_cloud->points[i].y = 0.04 * rand () / (RAND_MAX + 1.0f);
-		object_cloud->points[i].z = 0.08 * rand () / (RAND_MAX + 1.0f);
+		object_cloud->points[i].y = 0.03 * rand () / (RAND_MAX + 1.0f);
+		object_cloud->points[i].z = 0.04 * rand () / (RAND_MAX + 1.0f);
 	}
 
 	/*
@@ -326,9 +342,9 @@ void Planner::cluster(sensor_msgs::PointCloud2& cloud2, vector<sensor_msgs::Poin
 
 	std::vector<pcl::PointIndices> cluster_indices;
 	pcl::EuclideanClusterExtraction<pcl::PointXYZRGB> ec;
-	ec.setClusterTolerance (0.005); // 2cm
-	ec.setMinClusterSize (3000);
-	ec.setMaxClusterSize (15000);
+	ec.setClusterTolerance (0.02); // 2cm
+	ec.setMinClusterSize (300);
+	ec.setMaxClusterSize (10000);
 	ec.setSearchMethod (tree);
 	ec.setInputCloud (cloud);
 	ec.extract (cluster_indices);
@@ -396,6 +412,11 @@ void Planner::planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_requ
 	vector<Move> best_next_action_sequence;
 	double total_percentage_revealed_so_far = 0.0;
 	plan(MAX_HORIZON, clustersDetected_, best_next_action_sequence, total_percentage_revealed_so_far);
+	action_sequence_ = best_next_action_sequence;
+	ROS_INFO("%zu moves in the action sequence", best_next_action_sequence.size());
+
+	//Execute plan
+	execute_plan();
 }
 
 void Planner::samplePose(sensor_msgs::PointCloud2 target_cloud2, 
@@ -747,8 +768,8 @@ void Planner::plan(int horizon,
 
 	//For each possible move, do the following.
 
-	for (size_t move_idx = 0; move_idx < possible_moves.size(); move_idx++) {
-	//for (size_t move_idx = 0; move_idx < 2; move_idx++) {
+	//for (size_t move_idx = 0; move_idx < possible_moves.size(); move_idx++) {
+	for (size_t move_idx = 0; move_idx < 5; move_idx++) {
 		ROS_INFO("Simulating move %zu", move_idx);
 		Move this_move = possible_moves[move_idx];
 
@@ -785,6 +806,33 @@ void Planner::plan(int horizon,
 		}
 	}
 	*/
+}
+
+bool Planner::execute_plan()
+{
+	tum_os::Execute_Plan execute_call;
+	for (size_t i = 0; i < action_sequence_.size(); i++)
+	{
+		execute_call.request.cluster_idx.push_back(action_sequence_[i].cluster_idx);
+		execute_call.request.object_to_move.push_back(action_sequence_[i].objectToMove);
+		execute_call.request.source_pose.push_back(tfPoseToGeometryPose(action_sequence_[i].sourcePose));
+		execute_call.request.dest_pose.push_back(tfPoseToGeometryPose(action_sequence_[i].destPose));
+	}
+
+	ROS_INFO("Calling the execute plan service");
+	if (manipulateClient_.call(execute_call)) {
+		if (execute_call.response.result) {
+			ROS_INFO("Executed the plan");
+			return true;
+		} else {
+			ROS_ERROR("Execute service called but execution failed.");
+			return false;
+		}
+	} else {
+		ROS_ERROR("Failed to call execute plan service.");
+		return false;
+	}
+	return true;
 }
 
 int main (int argc, char** argv)
