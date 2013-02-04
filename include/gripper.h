@@ -6,7 +6,8 @@ typedef actionlib::SimpleActionClient<pr2_controllers_msgs::Pr2GripperCommandAct
 
 class Gripper{
 	private:
-		GripperClient* gripper_client_;  
+		GripperClient* r_gripper_client_;
+		GripperClient* l_gripper_client_;
 
 	public:
 		//Action client initialization
@@ -14,20 +15,49 @@ class Gripper{
 
 			//Initialize the client for the Action interface to the gripper controller
 			//and tell the action client that we want to spin a thread by default
-			gripper_client_ = new GripperClient("r_gripper_controller/gripper_action", true);
+			r_gripper_client_ = new GripperClient("r_gripper_controller/gripper_action", true);
+			l_gripper_client_ = new GripperClient("l_gripper_controller/gripper_action", true);
 
 			//wait for the gripper action server to come up 
-			while(!gripper_client_->waitForServer(ros::Duration(5.0))){
+			while(!r_gripper_client_->waitForServer(ros::Duration(5.0))){
 				ROS_INFO("Waiting for the r_gripper_controller/gripper_action action server to come up");
+			}
+			while(!l_gripper_client_->waitForServer(ros::Duration(5.0))){
+				ROS_INFO("Waiting for the l_gripper_controller/gripper_action action server to come up");
 			}
 		}
 
 		~Gripper(){
-			delete gripper_client_;
+			delete r_gripper_client_;
+			delete l_gripper_client_;
 		}
 
 		//Open the gripper
 		bool open(){
+			pr2_controllers_msgs::Pr2GripperCommandGoal open;
+			open.command.position = 0.08;
+			open.command.max_effort = -1.0;  // Do not limit effort (negative)
+
+			ROS_INFO("Sending open goal");
+			r_gripper_client_->sendGoal(open);
+			r_gripper_client_->waitForResult();
+			if(r_gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED) {
+				ROS_INFO("The gripper opened!");
+				return true;
+			}
+			else {
+				ROS_INFO("The gripper failed to open.");
+				return false;
+			}
+		}
+
+		bool open(char arm){
+			GripperClient* gripper_client_;
+			if (arm == 'r')
+				gripper_client_ = r_gripper_client_;
+			else
+				gripper_client_ = l_gripper_client_;
+
 			pr2_controllers_msgs::Pr2GripperCommandGoal open;
 			open.command.position = 0.08;
 			open.command.max_effort = -1.0;  // Do not limit effort (negative)
@@ -47,6 +77,26 @@ class Gripper{
 
 		//Close the gripper
 		void close(){
+			pr2_controllers_msgs::Pr2GripperCommandGoal squeeze;
+			squeeze.command.position = 0.0;
+			squeeze.command.max_effort = 50.0;  // Close gently
+
+			ROS_INFO("Sending squeeze goal");
+			r_gripper_client_->sendGoal(squeeze);
+			r_gripper_client_->waitForResult();
+			if(r_gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+				ROS_INFO("The gripper closed!");
+			else
+				ROS_INFO("The gripper failed to close.");
+		}
+
+		void close(char arm){
+			GripperClient* gripper_client_;
+			if (arm == 'r')
+				gripper_client_ = r_gripper_client_;
+			else
+				gripper_client_ = l_gripper_client_;
+
 			pr2_controllers_msgs::Pr2GripperCommandGoal squeeze;
 			squeeze.command.position = 0.0;
 			squeeze.command.max_effort = 50.0;  // Close gently

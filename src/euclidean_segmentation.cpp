@@ -25,8 +25,8 @@ Author: Megha Gupta
 using namespace std;
 using namespace pcl;
 
-//typedef pcl::PointXYZRGB PointT;
-typedef pcl::PointXYZ PointT;
+typedef pcl::PointXYZRGB PointT;
+//typedef pcl::PointXYZ PointT;
 //typedef std::vector<pcl::PointCloud<PointXYZRGB> > pcd_vector;
 
 class EuclideanSegmenter
@@ -83,7 +83,7 @@ private:
 
         boost::shared_ptr<const vector<int> > indices (new vector<int> (temp));
         tree->setInputCloud (object_cloud, indices);
-        euclidean_clustering(*object_cloud, *indices, tree, 0.01, cluster_indices, 2000, 10000);
+        euclidean_clustering(*object_cloud, *indices, tree, 0.005, cluster_indices, 2000, 10000);
 
         int j = 0;
         std::vector<sensor_msgs::PointCloud2> clusters;

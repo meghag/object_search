@@ -1,7 +1,12 @@
 int32[] cluster_idx
+
 sensor_msgs/PointCloud2[] object_to_move
+
 geometry_msgs/Pose[] source_pose
 geometry_msgs/Pose[] dest_pose
+
+float64 table_height
+
 #tf/LinearMath/Pose source_pose2
 #tf/LinearMath/Pose destPose
 

@@ -37,6 +37,7 @@ Author: Megha Gupta
 #include <tf/tf.h>
 
 #include <tum_os/PlanRequest.h>
+#include <tum_os/Get_New_PCD.h>
 
 std::string cloud_topic = "/head_mount_kinect/depth_registered/points";
 // std::string cloud_topic = "/narrow_stereo_textured/points2";
@@ -78,6 +79,7 @@ public:
     planar_pub_ = n_.advertise<sensor_msgs::PointCloud2>("planar_cloud",1);
     object_pub_ = n_.advertise<sensor_msgs::PointCloud2>("object_cloud_from_cam",1);
     planRequestPub_ = n_.advertise<tum_os::PlanRequest>("plan_request",1);
+    newpcdServer_ = n_.advertiseService("get_new_pcd", &ReadData::getNewDataCallback, this);
 
     pcd_sub_.subscribe(n_, cloud_topic, 1);
     tf_filter_ = new tf::MessageFilter<sensor_msgs::PointCloud2>(pcd_sub_, tf_, target_frame_, 10);
@@ -94,6 +96,7 @@ private:
   ros::Publisher planar_pub_;
   ros::Publisher object_pub_;
   ros::Publisher planRequestPub_;
+  ros::ServiceServer newpcdServer_;
   bool new_data_wanted_;
 
   //  Callback to register with tf::MessageFilter to be called when transforms are available
@@ -172,7 +175,7 @@ private:
       plan_request.table_height = max.z();
       plan_request.bb_min.resize(3);
       plan_request.bb_min[0] = min.x()+0.1;
-      plan_request.bb_min[1] = min.y()+0.1;
+      plan_request.bb_min[1] = min.y()+0.2;			//0.1; temp hack to not use left arm
       plan_request.bb_min[2] = max.z();
       plan_request.bb_max.resize(3);
       plan_request.bb_max[0] = max.x()-0.1;
@@ -184,6 +187,15 @@ private:
     }
   };//End of function getObjectCloud
 
+  bool getNewDataCallback(tum_os::Get_New_PCD::Request &req,
+                   tum_os::Get_New_PCD::Response &res)
+  	{
+  		ROS_INFO("Inside new data wanted callback.");
+  		new_data_wanted_ = req.new_pcd_wanted;
+  		ROS_INFO("Set new_data_wanted_ to true.");
+  		res.result = true;
+  		return true;
+  	}
 }; //End of class definition
 
 

@@ -30,6 +30,7 @@ rosbuild_gensrv()
 #target_link_libraries(example ${PROJECT_NAME})
 
 rosbuild_add_library(${PROJECT_NAME} src/set_marker.cpp)
+rosbuild_add_library(pcd_utils src/pcd_utils.cpp)
 
 rosbuild_add_executable(read_data src/read_data.cpp
 				src/planar_seg.cpp
@@ -41,7 +42,7 @@ rosbuild_add_executable(read_data src/read_data.cpp
 #target_link_libraries(pointcloud_to_hull gpcl octomap octomath)
 
 rosbuild_add_executable(planner src/planner.cpp src/TableTopObject.cpp)
-target_link_libraries(planner gpcl octomap octomath)
+target_link_libraries(planner gpcl octomap octomath pcd_utils)
 
 rosbuild_add_executable(manipulator src/manipulator.cpp)
 target_link_libraries(manipulator ${PROJECT_NAME} gpcl)

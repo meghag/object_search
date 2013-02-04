@@ -12,6 +12,7 @@
 
 #include <ros/ros.h>
 #include <cmath>
+#include <ctime>
 #include <iostream>
 #include <octomap/octomap.h>
 #include <octomap/OcTree.h>
@@ -33,16 +34,16 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/ros/conversions.h>
 #include <pcl_ros/point_cloud.h>
-#include <pcl/filters/extract_indices.h>
-#include <pcl/ModelCoefficients.h>
-#include <pcl/sample_consensus/method_types.h>
-#include <pcl/sample_consensus/model_types.h>
+//#include <pcl/filters/extract_indices.h>
+//#include <pcl/ModelCoefficients.h>
+//#include <pcl/sample_consensus/method_types.h>
+//#include <pcl/sample_consensus/model_types.h>
 #include <pcl/filters/passthrough.h>
-#include <pcl/filters/project_inliers.h>
-#include <pcl/segmentation/sac_segmentation.h>
-#include <pcl/features/normal_3d.h>
-#include <pcl/kdtree/kdtree.h>
-#include <pcl/segmentation/extract_clusters.h>
+//#include <pcl/filters/project_inliers.h>
+//#include <pcl/segmentation/sac_segmentation.h>
+//#include <pcl/features/normal_3d.h>
+//#include <pcl/kdtree/kdtree.h>
+//#include <pcl/segmentation/extract_clusters.h>
 
 extern "C" {
 #include <gpcl/gpc.h>
@@ -55,19 +56,17 @@ extern "C" {
 #include <tf/LinearMath/Quaternion.h>
 #include <tf/LinearMath/Matrix3x3.h>
 
-//#include "find_extents.h"
 //#include "set_marker.h"
 //#include "create_marker_array.h"
-//#include "pass_through_gen.h"
+#include "pcd_utils.h"
 
 #include "TableTopObject.h"
-//#include "sampling.h"
 //#include <tum_os/Clusters.h>
 #include <tum_os/PlanRequest.h>
 #include <tum_os/Execute_Plan.h>
+#include <tum_os/Get_New_PCD.h>
 
 //#include "object_search_pkg/Plan_Actions.h"
-//#include "object_search_pkg/Get_New_PCD.h"
 
 using namespace pcl;
 using namespace octomap;
@@ -89,11 +88,8 @@ point3d BBX_MAX(1.9,0.4,1);
 bool data_from_bag = false;
 bool data_to_bag = false;
 std::string data_bag_name = "data.bag";
-//Define bounding box
-//tf::Vector3 BB_MIN(0.4,-0.4,0.67);
-//tf::Vector3 BB_MAX(1.0,0.4,1.0);
 int bases[] = {2,3,5,7,11,13,17,19,23,29};
-int MAX_HORIZON = 2;
+//int MAX_HORIZON = 2;
 
 std::map<std::string, ros::Publisher*> belief_publishers;
 std::map<std::string, ros::Publisher*> cloud_publishers;
@@ -111,7 +107,7 @@ struct Move {
 class Planner
 {
 public:
-	Planner (ros::NodeHandle& n);	//, octomap::OcTree & tree);
+	Planner (ros::NodeHandle& n, int horizon);	//, octomap::OcTree & tree);
 	~Planner (void);
 
 private:
@@ -123,7 +119,7 @@ private:
 	void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses);
 	void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id);
 	tf::Stamped<tf::Pose> getPose(const std::string target_frame, const std::string lookup_frame, ros::Time tm);
-	void cluster(sensor_msgs::PointCloud2& cloud2, vector<sensor_msgs::PointCloud2>& clusters);
+	//void cluster(sensor_msgs::PointCloud2& cloud2, vector<sensor_msgs::PointCloud2>& clusters);
 
 	TableTopObject createTTO(sensor_msgs::PointCloud2& cloud2);
 
@@ -141,50 +137,48 @@ private:
 					 bool check_visible);
 
 	bool generatePercentage(vector<tf::Pose> object_belief,
-			vector<sensor_msgs::PointCloud2> clusters,
-			vector<double>& percentage);
+			vector<sensor_msgs::PointCloud2> visible_clusters,
+			vector<int> visible_idx,
+			map<int, double>& percentage);
 
 	void findVisible(vector<sensor_msgs::PointCloud2> config,
-			vector<sensor_msgs::PointCloud2>& visible_clusters);
+			vector<sensor_msgs::PointCloud2>& visible_clusters,
+			vector<int>& visible_idx);
 
-	void findPossibleMoves(vector<sensor_msgs::PointCloud2> config,
+	void findPossibleMoves(sensor_msgs::PointCloud2& config,
 			vector<sensor_msgs::PointCloud2> visible_clusters,
+			vector<int> visible_idx,
 			vector<Move>& possible_moves);
 
 	void plan(int horizon,
 			vector<sensor_msgs::PointCloud2> config,
+			sensor_msgs::PointCloud2 other_cloud,
 			vector<Move>& best_next_action_sequence,
 			double& total_percentage_revealed_so_far);
 
 	void simulateMove(vector<sensor_msgs::PointCloud2> config,
 			Move move, vector<sensor_msgs::PointCloud2>& new_config);
 
-	bool execute_plan();
-
-	//void pubCloud(const std::string &topic_name,
-		//	const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud,
-			//std::string frame_id = fixed_frame_);
+	void execute_plan();
 
 	//bool callGraspingService (void);
 	//int findHiddenVoxels(PointCloud<PointXYZ>::Ptr& object);
 	//vector<geometry_msgs::Point> find_corners(PointCloud<PointXYZ>::Ptr& cloud);
 	//bool callNewDataService (void);
 
-	//Variables
+	//Publishers, Subscribers, Service servers & clients
 	ros::NodeHandle n_;
 	ros::Subscriber planRequestSub_;
 	ros::Publisher objectCloudPub_;
 	ros::Publisher clustersPub_;
 	ros::Publisher visiblePub_;
 	ros::Publisher newPosePub_;
+	ros::Publisher source_pose_pub_;
+	ros::Publisher dest_pose_pub_;
 	ros::ServiceClient manipulateClient_;
-
-	//ros::ServiceServer planActionsServer_;
-	//ros::Subscriber visibleObjectsSub_;
-	//ros::Subscriber octreeSub_;
-	//ros::ServiceClient planActionsClient_;
-
-	//pcl::PointCloud<pcl::PointXYZRGB>::Ptr object_cloud;
+	ros::ServiceClient newpcdClient_;
+	
+	//Variables
 	sensor_msgs::PointCloud2 targetCloud2_;
 	sensor_msgs::PointCloud2 objectCloud2_;
 	std::vector<sensor_msgs::PointCloud2> clustersDetected_;
@@ -194,12 +188,11 @@ private:
 	tf::Vector3 BB_MIN;
 	tf::Vector3 BB_MAX;
 	vector<Move> action_sequence_;
-
+	bool new_data_wanted_;
+	int MAX_HORIZON;
 
 	//map<pair<int,PointCloud<PointXYZ> > > knownObjects_;			//Map of known object point clouds with keys as object id
 	//map<pair<int,PointCloud<PointXYZ> > > visibleObjects_;			//Map of visible object point clouds with keys as object id
-	//set<int> occupiedCells_;
-	//set<int> freeCells_;
 	//float treeResolution_;
 	//octomap::OcTree tree_;
 };

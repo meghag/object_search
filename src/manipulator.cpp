@@ -20,20 +20,20 @@ Manipulator::Manipulator(ros::NodeHandle & n): n_(n)
 	reset_posn_.point.x = 0.68;	reset_posn_.point.y = -0.5; reset_posn_.point.z = 1;
 	reset_posn_.header.frame_id = "base_link";
 
-	LEFT_RESET.x = 0.3;
-	LEFT_RESET.y = 0.7; //0.5
-	LEFT_RESET.z = 1.1; //1.0
-	RIGHT_RESET.x = 0.3;
-	RIGHT_RESET.y = -0.7;  //-0.5
-	RIGHT_RESET.z = 1.1;   //1.0
+	LEFT_RESET.x = 0.68;	//0.3;
+	LEFT_RESET.y = 0.5; //0.7
+	LEFT_RESET.z = 1.0; //1.1
+	RIGHT_RESET.x = 0.68;	//0.3;
+	RIGHT_RESET.y = -0.5;  //-0.7
+	RIGHT_RESET.z = 1.0;   //1.1
 
 	RED.x = 0.4;  RED.y = -0.5; RED.z = 1.0;  //Red bin
 	BLUE.x = 0.5;  BLUE.y = -0.5; BLUE.z = 1.0;	//Blue bin
 	GREEN.x = 0.6; GREEN.y = -0.5; GREEN.z = 1.0;  //Green bin
 
-	active_arm_ = "left_arm";
-	active_arm_sym_ = 0;
-	active_reset_ = LEFT_RESET;
+	active_arm_ = "right_arm";
+	active_arm_sym_ = 'r';
+	active_reset_ = RIGHT_RESET;
 
 	ros::service::waitForService(SET_PLANNING_SCENE_DIFF_NAME);
 	get_planning_scene_client_ = n_.serviceClient<arm_navigation_msgs::GetPlanningScene>(SET_PLANNING_SCENE_DIFF_NAME);
@@ -51,12 +51,13 @@ bool Manipulator::callback(tum_os::Execute_Plan::Request &req,
 	object_to_move_ = req.object_to_move;
 	source_pose_ = req.source_pose;
 	dest_pose_ = req.dest_pose;
+	table_height_ = req.table_height;
 
 	ROS_INFO("Number of moves to execute = %zu", object_to_move_.size());
 
 	//table_extent_ = req.table_extent;
 	active_arm_ = "right_arm";
-	active_arm_sym_ = 1;
+	active_arm_sym_ = 'r';
 	active_reset_ = RIGHT_RESET;
 
 	geometry_msgs::PoseStamped to_pub;
@@ -88,10 +89,34 @@ bool Manipulator::callback(tum_os::Execute_Plan::Request &req,
 		res.result = true;
 		if (!pick_n_place(i))
 			res.result = false;
-		gripper_.open();
-		move_arm(reset_posn_.point, 1, 1, 2, 1);
+		gripper_.open(active_arm_sym_);
+		move_arm(active_reset_, 1, 0, false, 2, 1);
+		//move_arm(reset_posn_.point, 1, 1, 2, 1);
 	}
 	return true;
+}
+
+vector<geometry_msgs::Point> Manipulator::waypoints(size_t idx)
+{
+	vector<geometry_msgs::Point> wp;
+	geometry_msgs::Point center = bbx_.pose_stamped.pose.position;
+	geometry_msgs::Point temp = center;
+	geometry_msgs::Point temp2 = dest_pose_[idx].position;
+	temp.z += 0.2;
+	wp.push_back(temp);				//Above the object
+	temp.z = center.z + bbx_.dimensions.z*0.5 - 0.01;
+	wp.push_back(temp);				//Around the object
+	temp.z += 0.1;
+	wp.push_back(temp);				//Up in the air with the object
+	temp2.z += 0.2;
+	wp.push_back(temp2);			//Above the destination pose with the object in hand
+	//temp2.z -= 0.01;
+	temp2.z = dest_pose_[idx].position.z + bbx_.dimensions.z*0.5;
+	wp.push_back(temp2);			//At the destination with hand around the object
+	temp2.z += 0.1;
+	wp.push_back(temp2);			//Above the destination pose
+
+	return wp;
 }
 
 bool Manipulator::pick_n_place(size_t idx)
@@ -102,34 +127,150 @@ bool Manipulator::pick_n_place(size_t idx)
 			bbx_.pose_stamped.pose, bbx_.dimensions, 1.0f, 1.0f, 0.0f, 1.0);
 	bbx_pub_.publish(bbx_marker);
 	//bbx_pose_pub_.publish(bbx_);
-	gripper_.open();
 
-	geometry_msgs::Point center = bbx_.pose_stamped.pose.position;
-	geometry_msgs::Point temp = center;
-	geometry_msgs::Point temp2 = dest_pose_[idx].position;
-	temp.z += 0.2;
-	if (move_arm(temp, 1, 0, 1, 0) == 0) {
-		temp.z = center.z + bbx_.dimensions.z*0.5 - 0.01;
-		if (move_arm(temp, 1, 0, 1, 0) == 0) {
-			gripper_.close();
-			temp.z += 0.1;
-			move_arm(temp, 1, 0, 1, 0);
-			temp2.z += 0.2;
-			move_arm(temp2, 1, 0, 1, 0);
-			temp2.z = dest_pose_[idx].position.z + bbx_.dimensions.z*0.5 - 0.01;
-			move_arm(temp2, 1, 0, 1, 0);
-			gripper_.open();
-			temp2.z += 0.1;
-			move_arm(temp2, 1, 0, 1, 0);
-		} else {
-			move_arm(reset_posn_.point, 1, 0, 2, 1);
-			return false;
+	vector<geometry_msgs::Point> wp = waypoints(idx);		//Arm waypoints
+	bool success = true;
+	geometry_msgs::PoseStamped pose_pub;
+	pose_pub.header.frame_id = "base_link";
+	pose_pub.header.stamp = ros::Time::now();
+	pose_pub.pose.orientation.x = 0.0;
+	pose_pub.pose.orientation.y = 0.0;
+	pose_pub.pose.orientation.z = 0.0;
+	pose_pub.pose.orientation.w = 1.0;
+
+	for (int arm = 0; arm < 2; arm++)
+	{
+		if (arm == 1) {
+			ROS_INFO("Pick up with right arm failed. Trying with left arm.");
+			active_arm_ = "left_arm";
+			active_arm_sym_ = 'l';
+			active_reset_ = LEFT_RESET;
+			success = true;
 		}
-	} else
-		return false;
+
+		gripper_.open(active_arm_sym_);
+		//move_arm(geometry_msgs::Point go_to, int cluster_id, int collision_object_operation, bool attach, int plan_id, int action);
+		for (size_t i = 0; i < wp.size(); i++)
+		{
+			pose_pub.pose.position = wp[i];
+			dest_pose_pub_.publish(pose_pub);
+			breakpoint();
+
+			if (i == 0 && (move_arm(wp[i], 1, 0, false, 1, 0) == 0))
+				breakpoint();
+			else if (i == 1 && (move_arm(wp[i], 1, 0, false, 1, 0) == 0)) {
+				breakpoint();
+				gripper_.close(active_arm_sym_);
+			} else if (i == 2 && (move_arm(wp[i], 1, 0, true, 1, 0) == 0)) {
+				breakpoint();
+			} else if (i == 3 && (move_arm(wp[i], 100, 0, false, 1, 0) == 0)) {
+				breakpoint();
+			} else if (i == 4 && (move_arm(wp[i], 1, 0, false, 2, 0) == 0)) {
+				gripper_.open(active_arm_sym_);
+				breakpoint();
+			} else if (i > 4 && (move_arm(wp[i], 1, 0, false, 2, 0) == 0)) {
+				breakpoint();
+			} else {
+				success= false;
+				ROS_ERROR("Move failed");
+				breakpoint();
+				if (i > 0) {
+					geometry_msgs::Point temp = wp[i-1];
+					temp.z = table_height_ + bbx_.dimensions.z - 0.01;
+					move_arm(temp, 1, 0, false, 2, 0);
+					gripper_.open(active_arm_sym_);
+					temp.z += 0.2;
+					move_arm(temp, 1, 0, false, 2, 0);
+					move_arm(active_reset_, 1, 0, false, 2, 1);
+				}
+				break;
+			}
+		}
+		move_arm(active_reset_, 1, 1, false, 2, 1);
+		/*
+		if (success)
+		{
+			for (size_t i = wp.size() - 2; i < wp.size(); i++)
+			{
+				pose_pub.pose.position = wp[i];
+				dest_pose_pub_.publish(pose_pub);
+				breakpoint();
+
+				if (move_arm(wp[i], 1, 0, 2, 0) != 0) {
+					success= false;
+					geometry_msgs::Point temp = wp[i];
+					temp.z = table_height_ + bbx_.dimensions.z*0.5 + 0.03;
+					move_arm(temp, 1, 0, 2, 0);
+					gripper_.open();
+					temp.z += 0.2;
+					move_arm(temp, 1, 0, 2, 0);
+					move_arm(active_reset_, 1, 0, 2, 1);
+					break;
+				}
+				breakpoint();
+			}
+		}
+		*/
+	}
+
+		/*
+		if (move_arm(temp, 1, 0, 1, 0) == 0) {
+			temp.z = center.z + bbx_.dimensions.z*0.5 - 0.01;
+			if (move_arm(temp, 1, 0, 1, 0) == 0) {	//Around the object
+				gripper_.close(active_arm_sym_);
+				temp.z += 0.1;
+				if (move_arm(temp, 1, 0, 1, 0) == 0) {	//Up in the air with the object
+					temp2.z += 0.2;
+					if (move_arm(temp2, 1, 0, 1, 0) == 0) {		//Above the destination pose with the object in hand
+						temp2.z -= 0.01;
+						//temp2.z = dest_pose_[idx].position.z + bbx_.dimensions.z*0.5 + 0.01;
+						if (move_arm(temp2, 1, 0, 2, 0) == 0) {	//At the destination with hand around the object
+							gripper_.open(active_arm_sym_);
+							temp2.z += 0.1;
+							move_arm(temp2, 1, 0, 2, 0);	//Above the destination pose
+							success = true;
+							break;
+						} else {
+							temp.z -= 0.1;
+							move_arm(temp, 1, 0, 1, 0);
+							gripper_.open(active_arm_sym_);
+							temp.z += 0.1;
+							move_arm(temp, 1, 0, 1, 0);
+							move_arm(active_reset_, 1, 0, 1, 0);
+						}
+					} else {
+						move_arm(temp, 1, 0, 1, 0);
+						temp.z -= 0.1;
+						move_arm(temp, 1, 0, 1, 0);
+						gripper_.open(active_arm_sym_);
+						temp.z += 0.1;
+						move_arm(temp, 1, 0, 1, 0);
+						move_arm(active_reset_, 1, 0, 1, 0);
+						//move_arm(reset_posn_.point, 1, 0, 2, 1);
+						//return false;
+					}
+				} else {
+					gripper_.open(active_arm_sym_);
+					temp.z += 0.1;
+					move_arm(temp, 1, 0, 1, 0);
+					move_arm(active_reset_, 1, 0, 1, 0);
+					//move_arm(reset_posn_.point, 1, 0, 2, 1);
+					//return false;
+				}
+			} else {
+				move_arm(active_reset_, 1, 0, 1, 0);
+				//move_arm(reset_posn_.point, 1, 0, 2, 1);
+				//return false;
+			}
+		} //else
+		//return false;
+		move_arm(active_reset_, 1, 0, 1, 0);
+	}
+	*/
+
 
 	//		breakpoint();
-	return true;
+	return success;
 }
 
 void Manipulator::resetCollisionModels() {
@@ -187,67 +328,115 @@ void Manipulator::processCollisionGeometryForBoundingBox(const object_manipulati
 	collision_object_pub_.publish(collision_object);
 }
 
-void Manipulator::collision_op(std::string object1, std::string object2,
-		int operation, double penetration,
-		arm_navigation_msgs::CollisionOperation& cop) {
-	cop.object1 = object1;
-	cop.object2 = object2;
-	cop.operation = operation;    //0 = Disable, 1 = Enable
+void Manipulator::collision_op(std::string object1, std::string object2, int operation, double penetration,
+		arm_navigation_msgs::CollisionOperation& cop)
+{
+	if (strcmp(object1.c_str(), "all") == 0 && strcmp(object2.c_str(), "all") == 0) {
+		cop.object1 = cop.COLLISION_SET_ALL;
+		cop.object2 = cop.COLLISION_SET_ALL;
+	} else {
+		cop.object1 = object1;
+		cop.object2 = object2;
+	}
+	if (!operation)
+		cop.operation = cop.DISABLE;    //0 = Disable, 1 = Enable
+	else
+		cop.operation = cop.ENABLE;
 	cop.penetration_distance = penetration;
 }
 
-int Manipulator::move_arm(geometry_msgs::Point go_to, int cluster_id, int cluster_op, int plan_id, int action)
+void Manipulator::add_attached_object(arm_navigation_msgs::AttachedCollisionObject& acob, int operation)
 {
-	actionlib::SimpleActionClient<arm_navigation_msgs::MoveArmAction> move_arm("move_right_arm",true);
-	move_arm.waitForServer();
+	//arm_navigation_msgs::CollisionObject cob;
+	add_collision_object(acob.object, 0);
+	//acob.link_name = "r_gripper_r_finger_tip_link";
+	acob.link_name = "base_link";
+	acob.touch_links.push_back("r_end_effector");
+}
+
+void Manipulator::add_collision_object(arm_navigation_msgs::CollisionObject& cob, int operation)
+{
+	cob.id = collision_name_;
+	if (operation == 0)
+		cob.operation.operation = arm_navigation_msgs::CollisionObjectOperation::ADD; //0: add, 1: remove, 2: detach and add; 3: attach and remove
+	else if (operation == 1)
+			cob.operation.operation = arm_navigation_msgs::CollisionObjectOperation::REMOVE;
+	else if (operation == 2)
+			cob.operation.operation = arm_navigation_msgs::CollisionObjectOperation::DETACH_AND_ADD_AS_OBJECT;
+	else if (operation == 3)
+		cob.operation.operation = arm_navigation_msgs::CollisionObjectOperation::ATTACH_AND_REMOVE_AS_OBJECT;
+	 //0: add, 1: remove, 2: detach and add; 3: attach and remove
+	cob.header.frame_id = "base_link";
+	cob.header.stamp = ros::Time::now();
+	arm_navigation_msgs::Shape object;
+	object.type = arm_navigation_msgs::Shape::BOX;  //0: sphere; 1: box; 2: cylinder; 3: mesh
+	//arm_navigation_msgs::Shape::CYLINDER;
+	object.dimensions.resize(3);
+	object.dimensions[0] = bbx_.dimensions.x + 0.07; // need large padding in x direction if push is in x direction bcoz after push the hand will be in collision
+	object.dimensions[1] = bbx_.dimensions.y + 0.07;
+	object.dimensions[2] = bbx_.dimensions.z + 0.07;
+	cob.shapes.push_back(object);
+
+	cob.poses.push_back(bbx_.pose_stamped.pose);
+}
+
+int Manipulator::move_arm(geometry_msgs::Point go_to, int cluster_id,
+		int collision_object_operation, bool attach, int plan_id, int action)
+{
+	//if (active_arm_sym_ == 'r') {
+		actionlib::SimpleActionClient<arm_navigation_msgs::MoveArmAction> move_right_arm("move_right_arm",true);
+	//} else
+		actionlib::SimpleActionClient<arm_navigation_msgs::MoveArmAction> move_left_arm("move_left_arm",true);
+	move_right_arm.waitForServer();
+	move_left_arm.waitForServer();
 	ROS_INFO("Connected to server");
 
 	ROS_INFO("Creating move arm goal");
 	arm_navigation_msgs::MoveArmGoal goalA;
-	goalA.motion_plan_request.group_name = "right_arm";
+
+	goalA.motion_plan_request.group_name = active_arm_;
+	//goalA.motion_plan_request.group_name = "right_arm";
 	goalA.motion_plan_request.num_planning_attempts = 3;
 	goalA.motion_plan_request.planner_id = std::string("");
 	goalA.planner_service_name = std::string("ompl_planning/plan_kinematic_path");
 	goalA.motion_plan_request.allowed_planning_time = ros::Duration(5.0);
 
-	if (cluster_id != 100) {
+	if (cluster_id != 100 && !attach) {
 		arm_navigation_msgs::CollisionObject cob;
-		cob.id = collision_name_;
-		if (cluster_op == 0)
-			cob.operation.operation = arm_navigation_msgs::CollisionObjectOperation::ADD; //0: add, 1: remove, 2: detach and add; 3: attach and remove
-		else
-			cob.operation.operation = arm_navigation_msgs::CollisionObjectOperation::REMOVE; //0: add, 1: remove, 2: detach and add; 3: attach and remove
-		cob.header.frame_id = "base_link";
-		cob.header.stamp = ros::Time::now();
-		arm_navigation_msgs::Shape object;
-		object.type = arm_navigation_msgs::Shape::BOX;  //0: sphere; 1: box; 2: cylinder; 3: mesh
-		//arm_navigation_msgs::Shape::CYLINDER;
-		object.dimensions.resize(3);
-		object.dimensions[0] = bbx_.dimensions.x + 0.1; // need large padding in x direction if push is in x direction bcoz after push the hand will be in collision
-		object.dimensions[1] = bbx_.dimensions.y + 0.1;
-		object.dimensions[2] = bbx_.dimensions.z + 0.1;
-		cob.shapes.push_back(object);
-
-		cob.poses.push_back(bbx_.pose_stamped.pose);
+		add_collision_object(cob, collision_object_operation);
 		goalA.planning_scene_diff.collision_objects.push_back(cob);
+	}
 
-		if (cluster_op == 0) {
-			arm_navigation_msgs::CollisionOperation cop;
-			cop.object1 = cop.COLLISION_SET_ALL;
-			///Setting object1 to "gripper" does not work
-			//cop.object1 = "gripper";
-			cop.object2 = collision_name_;
-			//cop.object2 = cop.COLLISION_SET_ALL;
-			cop.operation = cop.DISABLE;    //0 = Disable, 1 = Enable
-			cop.penetration_distance = 1.0;
-			goalA.operations.collision_operations.push_back(cop);
-		}
+	//	if (collsion_object_operation == 0) {
+	arm_navigation_msgs::CollisionOperation cop;
+	if (action == 0 && plan_id == 1) {
+		///Setting object1 to "gripper" does not work
+		//cop.object1 = "r_end_effector";
+		//cop.object2 = collision_name_;
+		collision_op("r_end_effector", collision_name_, 0, 1.0, cop);
+	} else if (action == 0 && plan_id == 2) {
+		//cop.object1 = cop.COLLISION_SET_ALL;
+		//cop.object2 = cop.COLLISION_SET_ALL;
+		collision_op("all", "all", 0, 1.0, cop);
+	}
+	//cop.operation = cop.DISABLE;
+	//cop.penetration_distance = 1.0;
+	goalA.operations.collision_operations.push_back(cop);
+	//	}
+
+	if (attach) {
+		arm_navigation_msgs::AttachedCollisionObject acob;
+		add_attached_object(acob, 0);
+		goalA.planning_scene_diff.attached_collision_objects.push_back(acob);
 	}
 
 	arm_navigation_msgs::SimplePoseConstraint desired_pose;
 	desired_pose.header.frame_id = "base_link";
 	desired_pose.header.stamp = ros::Time::now();
-	desired_pose.link_name = "r_wrist_roll_link";
+	if (active_arm_sym_ == 'r')
+		desired_pose.link_name = "r_wrist_roll_link";
+	else
+		desired_pose.link_name = "l_wrist_roll_link";
 	desired_pose.pose.position = go_to;
 	if (plan_id == 1 && action == 1)
 		//desired_pose.pose.position.z = go_to.z + 0.002;
@@ -262,7 +451,7 @@ int Manipulator::move_arm(geometry_msgs::Point go_to, int cluster_id, int cluste
 	{
 		desired_pose.pose.position.x -= 0.005;
 		desired_pose.pose.position.y -= 0.01;
-		desired_pose.pose.position.z += 0.155;
+		desired_pose.pose.position.z += 0.18; //0.155;
 	}
 
 	desired_pose.pose.orientation.x = 0.0;
@@ -292,33 +481,7 @@ int Manipulator::move_arm(geometry_msgs::Point go_to, int cluster_id, int cluste
 
 		rot_matrix1.setRPY(0.0, 1.57, yaw);
 		rot_matrix1.getRotation(q4);
-		/*
-			rot_matrix2.setRPY(0.0, 0.0, yaw);
-			rot_matrix2.getRotation(q3);
-			t3.setRotation(q3);
-			t3.setOrigin(tf::Vector3(0.0, 0.0, 0.0));
 
-			q4 = t3*q1;
-			//breakpoint();
-			geometry_msgs::PoseStamped ps = bbx_.pose_stamped;
-			ps.pose.orientation.x = q1.getX();
-			ps.pose.orientation.y = q1.getY();
-			ps.pose.orientation.z = q1.getZ();
-			ps.pose.orientation.w = q1.getW();
-			bbx_pose_pub_.publish(ps);
-			//breakpoint();
-			ps.pose.orientation.x = q3.getX();
-			ps.pose.orientation.y = q3.getY();
-			ps.pose.orientation.z = q3.getZ();
-			ps.pose.orientation.w = q3.getW();
-			bbx_pose_pub_.publish(ps);
-			//breakpoint();
-			ps.pose.orientation.x = q4.getX();
-			ps.pose.orientation.y = q4.getY();
-			ps.pose.orientation.z = q4.getZ();
-			ps.pose.orientation.w = q4.getW();
-			bbx_pose_pub_.publish(ps);
-		 */
 		desired_pose.pose.orientation.x = q4.getX();
 		desired_pose.pose.orientation.y = q4.getY();
 		desired_pose.pose.orientation.z = q4.getZ();
@@ -340,21 +503,42 @@ int Manipulator::move_arm(geometry_msgs::Point go_to, int cluster_id, int cluste
 	ROS_INFO("Sending goal to move arm");
 	//breakpoint();
 
-	move_arm.sendGoal(goalA);
-	finished_within_time = move_arm.waitForResult(ros::Duration(10.0));
-	if (!finished_within_time) {
-		move_arm.cancelGoal();
-		ROS_INFO("Timed out achieving goal A");
-		return -1;
-	} else {
-		actionlib::SimpleClientGoalState state = move_arm.getState();
-		bool success = (state == actionlib::SimpleClientGoalState::SUCCEEDED);
-		if(success) {
-			ROS_INFO("Action finished: %s",state.toString().c_str());
-			return 0;
-		} else {
-			ROS_INFO("Action failed: %s",state.toString().c_str());
+	if (active_arm_sym_ == 'r')
+	{
+		move_right_arm.sendGoal(goalA);
+		finished_within_time = move_right_arm.waitForResult(ros::Duration(10.0));
+		if (!finished_within_time) {
+			move_right_arm.cancelGoal();
+			ROS_INFO("Timed out achieving goal A");
 			return -1;
+		} else {
+			actionlib::SimpleClientGoalState state = move_right_arm.getState();
+			bool success = (state == actionlib::SimpleClientGoalState::SUCCEEDED);
+			if(success) {
+				ROS_INFO("Action finished: %s",state.toString().c_str());
+				return 0;
+			} else {
+				ROS_INFO("Action failed: %s",state.toString().c_str());
+				return -1;
+			}
+		}
+	} else {
+		move_left_arm.sendGoal(goalA);
+		finished_within_time = move_left_arm.waitForResult(ros::Duration(10.0));
+		if (!finished_within_time) {
+			move_left_arm.cancelGoal();
+			ROS_INFO("Timed out achieving goal A");
+			return -1;
+		} else {
+			actionlib::SimpleClientGoalState state = move_left_arm.getState();
+			bool success = (state == actionlib::SimpleClientGoalState::SUCCEEDED);
+			if(success) {
+				ROS_INFO("Action finished: %s",state.toString().c_str());
+				return 0;
+			} else {
+				ROS_INFO("Action failed: %s",state.toString().c_str());
+				return -1;
+			}
 		}
 	}
 	return 0;

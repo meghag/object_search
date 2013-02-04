@@ -73,9 +73,13 @@ private:
 			int operation, double penetration,
 			arm_navigation_msgs::CollisionOperation& cop);
 
-	//int move_arm_pp(geometry_msgs::Point go_to, int cluster_id, int cluster_op);
-	int move_arm(geometry_msgs::Point go_to, int cluster_id, int cluster_op, int plan_id, int action);
-	//int move_arm_tumble(geometry_msgs::Point go_to, int cluster_id, int cluster_op, int plan_id);
+	void add_collision_object(arm_navigation_msgs::CollisionObject& cob, int operation);
+
+	void add_attached_object(arm_navigation_msgs::AttachedCollisionObject& acob, int operation);
+
+	int move_arm(geometry_msgs::Point go_to, int cluster_id, int cluster_op, bool attach, int plan_id, int action);
+
+	vector<geometry_msgs::Point> waypoints(size_t idx);
 
 	void breakpoint();
 
@@ -117,13 +121,15 @@ private:
 	geometry_msgs::Point GREEN;
 	geometry_msgs::Point active_reset_;
 	std::string active_arm_;
-	int active_arm_sym_;
+	//int active_arm_sym_;
+	char active_arm_sym_;
 
 	vector<int> cluster_idx_;
 	vector<sensor_msgs::PointCloud2> object_to_move_;
 	vector<geometry_msgs::Pose> source_pose_;
 	vector<geometry_msgs::Pose> dest_pose_;
 	sensor_msgs::PointCloud2 target_cloud2_;
+	double table_height_;
 };
 
 #endif
