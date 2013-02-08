@@ -22,28 +22,11 @@
 
 #include <visualization_msgs/MarkerArray.h>
 #include <visualization_msgs/Marker.h>
-#include <pcl_ros/transforms.h>
 
 #include <geometry_msgs/Transform.h>
 #include <geometry_msgs/PoseArray.h>
 #include <tf/tf.h>
 //#include <tf_conversions/tf_eigen.h>
-
-#include <pcl/point_types.h>
-//#include <pcl/point_cloud.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl/ros/conversions.h>
-#include <pcl_ros/point_cloud.h>
-//#include <pcl/filters/extract_indices.h>
-//#include <pcl/ModelCoefficients.h>
-//#include <pcl/sample_consensus/method_types.h>
-//#include <pcl/sample_consensus/model_types.h>
-#include <pcl/filters/passthrough.h>
-//#include <pcl/filters/project_inliers.h>
-//#include <pcl/segmentation/sac_segmentation.h>
-//#include <pcl/features/normal_3d.h>
-//#include <pcl/kdtree/kdtree.h>
-//#include <pcl/segmentation/extract_clusters.h>
 
 extern "C" {
 #include <gpcl/gpc.h>
@@ -71,6 +54,8 @@ extern "C" {
 using namespace pcl;
 using namespace octomap;
 using namespace std;
+
+typedef pcl::PointXYZRGB PointT;
 
 //std::string fixed_frame_ = "tum_os_table";
 std::string fixed_frame_ = "base_link";
@@ -117,11 +102,14 @@ private:
 
 	void planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_request);
 	void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses);
-	void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id);
+	void pubCloud(const std::string &topic_name, const pcl::PointCloud<PointT>::Ptr &cloud, std::string frame_id);
 	tf::Stamped<tf::Pose> getPose(const std::string target_frame, const std::string lookup_frame, ros::Time tm);
 	//void cluster(sensor_msgs::PointCloud2& cloud2, vector<sensor_msgs::PointCloud2>& clusters);
 
 	TableTopObject createTTO(sensor_msgs::PointCloud2& cloud2);
+	void findGridLocations(vector<sensor_msgs::PointCloud2> config);
+	bool inFront(pcl::PointCloud<PointT> cloud, int cluster_idx);
+	void make_grid();
 
 	void samplePose(sensor_msgs::PointCloud2 target_cloud2,
 					TableTopObject otherCloudTTO,
@@ -190,6 +178,9 @@ private:
 	vector<Move> action_sequence_;
 	bool new_data_wanted_;
 	int MAX_HORIZON;
+	float grid_resolution_;
+	//multimap<int, pair<int, int> > grid_locations_;
+	vector<vector<int> > grid_locations_;
 
 	//map<pair<int,PointCloud<PointXYZ> > > knownObjects_;			//Map of known object point clouds with keys as object id
 	//map<pair<int,PointCloud<PointXYZ> > > visibleObjects_;			//Map of visible object point clouds with keys as object id

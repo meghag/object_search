@@ -10,13 +10,7 @@
 #define MANIPULATOR_H
 
 #include <ros/ros.h>
-#include <pcl/ros/conversions.h>
-#include <pcl/point_cloud.h>
-#include <sensor_msgs/PointCloud2.h>
-#include "pcl/io/pcd_io.h"
-#include "pcl/point_types.h"
 #include <sensor_msgs/point_cloud_conversion.h>
-#include <pcl_ros/transforms.h>
 #include <visualization_msgs/Marker.h>
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/Vector3.h>
@@ -45,6 +39,7 @@ using namespace std;
 
 typedef actionlib::SimpleActionClient<pr2_controllers_msgs::Pr2GripperCommandAction> GripperClient;
 typedef actionlib::SimpleActionClient<pr2_controllers_msgs::PointHeadAction> PointHeadClient;
+//typedef pcl::PointXYZRGB PointT;
 
 static const std::string SET_PLANNING_SCENE_DIFF_NAME = "/environment_server/set_planning_scene_diff";
 static const std::string GET_COLLISION_OBJECTS_NAME = "/environment_server/get_collision_objects";

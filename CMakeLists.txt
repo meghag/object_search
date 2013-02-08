@@ -32,9 +32,11 @@ rosbuild_gensrv()
 rosbuild_add_library(${PROJECT_NAME} src/set_marker.cpp)
 rosbuild_add_library(pcd_utils src/pcd_utils.cpp)
 
-rosbuild_add_executable(read_data src/read_data.cpp
-				src/planar_seg.cpp
-				src/pass_through_gen.cpp)
+rosbuild_add_executable(read_data src/read_data.cpp)
+target_link_libraries(read_data pcd_utils)
+
+#				src/planar_seg.cpp
+#				src/pass_through_gen.cpp)
 
 #rosbuild_add_executable(euclidean_seg src/euclidean_segmentation.cpp)
 

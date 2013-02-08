@@ -36,6 +36,8 @@ Author: Megha Gupta
 
 #include <tf/tf.h>
 
+#include "pcd_utils.h"
+
 #include <tum_os/PlanRequest.h>
 #include <tum_os/Get_New_PCD.h>
 
@@ -47,25 +49,6 @@ typedef pcl::PointXYZRGB PointT;
 
 using namespace std;
 using namespace pcl;
-
-int pass_through_gen(pcl::PointCloud<PointT>::Ptr& pcd_orig,
-		     pcl::PointCloud<PointT>::Ptr& pcd_filtered,
-		     bool filterx, float xmin, float xmax,
-		     bool filtery,float ymin, float ymax,
-		     bool filterz, float zmin, float zmax);
-
-int planar_seg(pcl::PointCloud<PointT>::Ptr orig_cloud,
-	       pcl::PointCloud<PointT>::Ptr p_cloud,
-	       pcl::PointCloud<PointT>::Ptr o_cloud,
-	       string fname1, string fname2);
-
-void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
-{
-    Eigen::Vector4f  	min_pt, max_pt;
-    pcl::getMinMax3D 	( *cloud,min_pt,max_pt );
-    min = tf::Vector3(min_pt.x(),min_pt.y(),min_pt.z());
-    max = tf::Vector3(max_pt.x(),max_pt.y(),max_pt.z());
-}
 
 tf::Vector3 BB_MIN(0.4,-0.4,0.6);
 tf::Vector3 BB_MAX(1.0,0.4,1.0);

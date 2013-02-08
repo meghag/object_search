@@ -1,5 +1,99 @@
 #include "pcd_utils.h"
 
+int pass_through_gen(pcl::PointCloud<PointT>::Ptr& pcd_orig,
+                 pcl::PointCloud<PointT>::Ptr& pcd_filtered,
+                 bool filterx, float xmin, float xmax, bool filtery, float ymin, float ymax,
+                 bool filterz, float zmin, float zmax)
+{
+	pcl::PointCloud<PointT>::Ptr cloudx(new pcl::PointCloud<PointT>);	//Filtered cloud
+	pcl::PointCloud<PointT>::Ptr cloudy(new pcl::PointCloud<PointT>);	//Filtered cloud
+
+	ROS_INFO("Inside pass through.");
+	ROS_INFO("pass thru before filtering: %zu data points", pcd_orig->points.size());
+//	for (size_t i = 0; i < 10; ++i)
+//		ROS_INFO("\t%f\t%f\t%f",pcd_orig->points[i].x, pcd_orig->points[i].y, pcd_orig->points[i].z);
+
+	/****************** Filter out the non-table points ******************/
+	pcl::PassThrough<PointT> pass;
+	pass.setInputCloud (pcd_orig);
+	if (filterx) {
+		pass.setFilterFieldName ("x");
+		pass.setFilterLimits (xmin, xmax);
+		//  pass.setFilterLimitsNegative (true);
+		pass.filter (*pcd_filtered);
+	} else
+		pcd_filtered = pcd_orig;
+	if (filtery) {
+		pass.setInputCloud (pcd_filtered);
+		pass.setFilterFieldName ("y");
+		pass.setFilterLimits (ymin, ymax);
+		//  pass.setFilterLimitsNegative (true);
+		pass.filter (*pcd_filtered);
+	} else
+		pcd_filtered = pcd_orig;
+	if (filterz) {
+		pass.setInputCloud (pcd_filtered);
+		pass.setFilterFieldName ("z");
+		pass.setFilterLimits (zmin, zmax);
+		//  pass.setFilterLimitsNegative (true);
+		pass.filter (*pcd_filtered);
+	}
+
+	ROS_INFO("Filtered cloud size: %zu", pcd_filtered->points.size());
+
+  return (0);
+}
+
+int planar_seg(pcl::PointCloud<PointT>::Ptr orig_cloud,
+               pcl::PointCloud<PointT>::Ptr p_cloud,
+               pcl::PointCloud<PointT>::Ptr o_cloud,
+               string fname1, string fname2)
+{
+  /******************** Planar Segmentation ***************************/
+
+  pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients ());
+  pcl::PointIndices::Ptr inliers (new pcl::PointIndices ());
+  // Create the segmentation object
+  pcl::SACSegmentation<PointT> seg;
+  //PCDWriter writer;
+  // Optional
+  seg.setOptimizeCoefficients (true);
+  // Mandatory
+  seg.setModelType (pcl::SACMODEL_PLANE);
+  seg.setMethodType (pcl::SAC_RANSAC);
+  seg.setDistanceThreshold (0.01);
+
+  // Create the filtering object
+  pcl::ExtractIndices<PointT> extract;
+
+  seg.setInputCloud (orig_cloud);
+  seg.segment (*inliers, *coefficients);
+
+  if (inliers->indices.size () == 0)
+  {
+    ROS_ERROR ("Could not estimate a planar model for the given dataset.");
+    return (-1);
+  }
+
+ // Extract the inliers
+    extract.setInputCloud (orig_cloud);
+    extract.setIndices (inliers);
+    extract.setNegative (false);
+    extract.filter (*p_cloud);
+    std::cerr << "PointCloud representing the planar component: " << p_cloud->width * p_cloud->height << " data points." << std::endl;
+
+    // Create the filtering object
+    extract.setNegative (true);
+    extract.filter (*o_cloud);
+  //pcl::io::savePCDFileASCII ((string)fname1, *p_cloud);
+  //std::cerr << "Saved " << p_cloud->points.size () << " data points to " << fname1 << std::endl;
+
+  pcl::io::savePCDFileASCII ((string)fname2, *o_cloud);
+  std::cerr << "Saved " << o_cloud->points.size () << " data points to " << fname2 << std::endl;
+
+  return (0);
+}
+
 geometry_msgs::Point find_centroid(pcl::PointCloud<PointT> pcd)
 {
 	ROS_INFO("Inside find_centroid");
@@ -109,7 +203,7 @@ char find_color(sensor_msgs::PointCloud2 pcd2)
 	return find_color(pcd);
 }
 
-void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
+void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<PointT>::Ptr &cloud)
 {
     Eigen::Vector4f  	min_pt, max_pt;
     pcl::getMinMax3D 	( *cloud,min_pt,max_pt );
@@ -119,12 +213,12 @@ void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZR
 
 sensor_msgs::PointCloud2 concatClouds(vector<sensor_msgs::PointCloud2>& clouds)
 {
-	pcl::PointCloud<pcl::PointXYZRGB>::Ptr concat_cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+	pcl::PointCloud<PointT>::Ptr concat_cloud(new pcl::PointCloud<PointT>);
 	sensor_msgs::PointCloud2 concat_cloud2;
 	fromROSMsg(clouds[0], *concat_cloud);
 	for (size_t i = 1; i < clouds.size(); i++)
 	{
-		pcl::PointCloud<pcl::PointXYZRGB> temp_cloud;
+		pcl::PointCloud<PointT> temp_cloud;
 		fromROSMsg(clouds[i], temp_cloud);
 		*concat_cloud += temp_cloud;
 	}
@@ -138,13 +232,13 @@ void cluster(sensor_msgs::PointCloud2& cloud2,
 		int max_cluster_size,
 		vector<sensor_msgs::PointCloud2>& clusters)
 {
-	pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+	pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
 	fromROSMsg(cloud2, *cloud);
-	pcl::search::KdTree<pcl::PointXYZRGB>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZRGB>);
+	pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
 	tree->setInputCloud (cloud);
 
 	std::vector<pcl::PointIndices> cluster_indices;
-	pcl::EuclideanClusterExtraction<pcl::PointXYZRGB> ec;
+	pcl::EuclideanClusterExtraction<PointT> ec;
 	ec.setClusterTolerance (cluster_tolerance); // 2cm
 	ec.setMinClusterSize (min_cluster_size);	//300
 	ec.setMaxClusterSize (max_cluster_size);	//10000
@@ -158,7 +252,7 @@ void cluster(sensor_msgs::PointCloud2& cloud2,
 	clusters.resize(cluster_indices.size());
 	for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
 	{
-		pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_cluster (new pcl::PointCloud<pcl::PointXYZRGB>);
+		pcl::PointCloud<PointT>::Ptr cloud_cluster (new pcl::PointCloud<PointT>);
 		sensor_msgs::PointCloud2 cluster2;
 		for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); pit++)
 			cloud_cluster->points.push_back (cloud->points[*pit]);
@@ -172,12 +266,12 @@ void cluster(sensor_msgs::PointCloud2& cloud2,
 	}
 }
 
-bool touchesTable(pcl::PointCloud<PointXYZRGB> cloud, double table_height)
+bool touchesTable(pcl::PointCloud<PointT> cloud, double table_height)
 {
 	//ROS_DEBUG("Inside touchesTable");
 	unsigned int count = 0;
-	//for (PointCloud<PointXYZRGB>::iterator it = cloud.points.begin(); it != cloud.points.end(); it++)
-	for(vector<PointXYZRGB, Eigen::aligned_allocator<PointXYZRGB> >::iterator it = cloud.points.begin(); it != cloud.points.end(); ++it)
+	//for (PointCloud<PointT>::iterator it = cloud.points.begin(); it != cloud.points.end(); it++)
+	for(vector<PointT, Eigen::aligned_allocator<PointT> >::iterator it = cloud.points.begin(); it != cloud.points.end(); ++it)
 	{
 		if (abs(it->z - table_height) < 0.01)
 			//Close enough to table

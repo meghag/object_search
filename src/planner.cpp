@@ -1,18 +1,18 @@
 #include "planner.h"
 
-//void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = fixed_frame_);
+//void pubCloud(const std::string &topic_name, const pcl::PointCloud<PointT>::Ptr &cloud, std::string frame_id = fixed_frame_);
 
 /*
-bool convexPointCloud(pcl::PointCloud<PointXYZRGB> cloud)
+bool convexPointCloud(pcl::PointCloud<PointT> cloud)
 {
-	//TODO
+	//TODO Think of how to implement this to find out which objects are in front.
 
 	ROS_DEBUG("Inside convexPointCloud");
 
 	//First project the cloud on vertical plane?
 
 	vector<double> vecx, vecy, vecz;
-	for (vector<PointXYZRGB, Eigen::aligned_allocator<PointXYZRGB> >::iterator it1 = cloud.points.begin(); it1 != cloud.points.end(); ++it1) {
+	for (vector<PointT, Eigen::aligned_allocator<PointT> >::iterator it1 = cloud.points.begin(); it1 != cloud.points.end(); ++it1) {
 		vecx.push_back(it1->x);
 		vecy.push_back(it1->y);
 		vecz.push_back(it1->z);
@@ -127,7 +127,7 @@ Planner::Planner (ros::NodeHandle& n, int horizon): n_(n), MAX_HORIZON(horizon)
 	new_data_wanted_ = false;
 
 	//generate object we search as a pointcloud
-	pcl::PointCloud<pcl::PointXYZRGB>::Ptr object_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+	pcl::PointCloud<PointT>::Ptr object_cloud (new pcl::PointCloud<PointT>);
 	ROS_INFO("Filling the point cloud for my object");
 
 	pcl::PointCloud<pcl::PointXYZ> cloud;
@@ -157,7 +157,7 @@ Planner::Planner (ros::NodeHandle& n, int horizon): n_(n), MAX_HORIZON(horizon)
 		rel.setRotation(tf::Quaternion(0,0,0,1));
 
 		act = act * rel;
-		pcl::PointXYZRGB pt;
+		PointT pt;
 		pt.x = act.getOrigin().x();
 		pt.y = act.getOrigin().y();
 		pt.z = act.getOrigin().z() * 4;
@@ -184,7 +184,7 @@ Planner::Planner (ros::NodeHandle& n, int horizon): n_(n), MAX_HORIZON(horizon)
 
 Planner::~Planner (void) {}
 
-void Planner::pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id)
+void Planner::pubCloud(const std::string &topic_name, const pcl::PointCloud<PointT>::Ptr &cloud, std::string frame_id)
 {
     ros::Publisher *cloud_pub;
 
@@ -295,13 +295,30 @@ tf::Stamped<tf::Pose> Planner::getPose(const std::string target_frame,const std:
 
 TableTopObject Planner::createTTO(sensor_msgs::PointCloud2& cloud2)
 {
-	pcl::PointCloud<PointXYZRGB>::Ptr cloud(new pcl::PointCloud<PointXYZRGB>);
+	pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
 	fromROSMsg(cloud2, *cloud);
 	//ROS_DEBUG("Creating a TableTopObject (TTO) for other_cloud");
 	TableTopObject cloudTTO(base_to_camera_.getOrigin(), (float)BB_MIN.z(), *cloud);
 	//ROS_DEBUG("Publishing the other cloud TTO on topic other_cloud_TTO");
 	//pubCloud("other_cloud_TTO", otherCloudTTO.getAsCloud() , fixed_frame_);
 	return cloudTTO;
+}
+
+void Planner::make_grid()
+{
+	float grid_resolution = 0.0;
+	for (size_t i = 0; i < clustersDetected_.size(); i++)
+	{
+		pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+		fromROSMsg(clustersDetected_[i], *cloud);
+		tf::Vector3 min, max;
+		minmax3d(min, max, cloud);
+		float x_size = max.getX() - min.getX();
+		float y_size = max.getY() - min.getY();
+		if (std::max(x_size, y_size) > grid_resolution)
+			grid_resolution = std::max(x_size, y_size);
+	}
+	grid_resolution_ = grid_resolution;
 }
 
 void Planner::planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_request)
@@ -338,6 +355,11 @@ void Planner::planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_requ
 		}
 		//breakpoint();
 	}
+
+	//TODO: Impose a grid on the bbx with resolution = max cluster size.
+	//Then calculate row & col of each cluster.
+	//Based on that, check whether any object lies in front of it.
+	make_grid();
 
 	vector<Move> best_next_action_sequence;
 	double total_percentage_revealed_so_far = 0.0;
@@ -416,7 +438,7 @@ void Planner::samplePose(sensor_msgs::PointCloud2 target_cloud2,
     //ROS_DEBUG("samples created");
     pub_belief("object_belief", object_belief);
 
-    pcl::PointCloud<PointXYZRGB>::Ptr targetCloud(new pcl::PointCloud<PointXYZRGB>);
+    pcl::PointCloud<PointT>::Ptr targetCloud(new pcl::PointCloud<PointT>);
     fromROSMsg(target_cloud2, *targetCloud);
 
     tf::Vector3 min, max;
@@ -430,7 +452,8 @@ void Planner::samplePose(sensor_msgs::PointCloud2 target_cloud2,
     	//ROS_DEBUG("%f, %f, %f", it->getOrigin().getX(), it->getOrigin().getY(), it->getOrigin().getZ());
     	//Check if the resulting pose touches the table
     	if (check_visible && abs(it->getOrigin().getZ() - tableHeight_) <= 0.02) {
-    	//if (check_visible && abs(it->getOrigin().getZ() - (min.z() + (max.z() - min.z())/2.0)) <= 0.02) {
+    		//TODO If the object is too big to grasp, sample only in neighborhood & use push primitive
+    		//Note that push can only be to the right or left
     		//Now check if the pose is hidden or not
     		if (checkHiddenOrVisible(target_cloud2, otherCloudTTO, *it, identity, check_hidden, check_visible))
     			object_posterior_belief.push_back(*it);
@@ -459,11 +482,11 @@ bool Planner::checkHiddenOrVisible(sensor_msgs::PointCloud2 object_cloud2,
 	tf::Transform resultingTransform = otherTransform.inverseTimes(ownTransform);
 	geometry_msgs::Transform trans;
 	
-	pcl::PointCloud<PointXYZRGB> cloud, temp;
+	pcl::PointCloud<PointT> cloud, temp;
 	fromROSMsg(object_cloud2, cloud);
 	temp.points.resize(cloud.points.size());
 	
-	pcl::PointCloud<PointXYZRGB>::Ptr targetCloud(new pcl::PointCloud<PointXYZRGB>);
+	pcl::PointCloud<PointT>::Ptr targetCloud(new pcl::PointCloud<PointT>);
 	fromROSMsg(object_cloud2, *targetCloud);
 	tf::Vector3 min, max;
 	minmax3d(min, max, targetCloud);
@@ -474,7 +497,7 @@ bool Planner::checkHiddenOrVisible(sensor_msgs::PointCloud2 object_cloud2,
 	for (size_t i = 0; i < cloud.points.size(); ++i)
     {
         tf::Vector3 vec(cloud.points[i].x, cloud.points[i].y, cloud.points[i].z);
-        pcl::PointXYZRGB pt;
+        PointT pt;
         vec = resultingTransform * vec;
         octomath::Vector3 coord;
 
@@ -535,18 +558,16 @@ bool Planner::generatePercentage(vector<tf::Pose> object_belief,
 								 map<int, double>& percentage)
 {
 	ROS_DEBUG("Generating percentage");
-	pcl::PointCloud<pcl::PointXYZRGB>::Ptr percentage_cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+	pcl::PointCloud<PointT>::Ptr percentage_cloud(new pcl::PointCloud<PointT>);
 	
 	//create tabletop representation with one cluster missing at a time
-	//int max_idx = -1;
-	//double max_perc = 0;
 	tf::Transform identity;
 	identity.setIdentity();
 	//percentage.resize(visible_clusters.size());
-	pcl::PointCloud<PointXYZRGB> temp_cloud;
+	pcl::PointCloud<PointT> temp_cloud;
 	for (size_t i = 0; i < visible_clusters.size(); i++) {
 		ROS_DEBUG("Cluster %zu", i);
-		pcl::PointCloud<pcl::PointXYZRGB>::Ptr concat_cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+		pcl::PointCloud<PointT>::Ptr concat_cloud(new pcl::PointCloud<PointT>);
 
 		for (size_t j = 0; j < visible_clusters.size(); j++) {
 			fromROSMsg(visible_clusters[j], temp_cloud);
@@ -559,7 +580,6 @@ bool Planner::generatePercentage(vector<tf::Pose> object_belief,
 			}
 		}
 		//ROS_DEBUG("Creating a TableTopObject (TTO) for cloud without cluster %zu", i);
-		//breakpoint();
 
 		size_t num_remaining = 0;
 		sensor_msgs::PointCloud2 concat_cloud2;
@@ -581,23 +601,72 @@ bool Planner::generatePercentage(vector<tf::Pose> object_belief,
 	return true;
 }	
 
+void Planner::findGridLocations(vector<sensor_msgs::PointCloud2> config)
+{
+	//Find row-col location for each cluster in the grid
+	vector<vector<int> > grid_locations;
+	grid_locations.resize(config.size());
+	for (size_t i = 0; i < config.size(); i++)
+	{
+		grid_locations[i].resize(4);
+		pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+		fromROSMsg(config[i], *cloud);
+		tf::Vector3 min, max;
+		minmax3d(min, max, cloud);
+		grid_locations[i][0] = (int)(min.getY() - BB_MIN.getY())/grid_resolution_;		//min row
+		grid_locations[i][1] = (int)(min.getX() - BB_MIN.getX())/grid_resolution_;		//min col
+		grid_locations[i][2] = (int)(max.getY() - BB_MAX.getY())/grid_resolution_;		//max row
+		grid_locations[i][3] = (int)(max.getX() - BB_MAX.getX())/grid_resolution_;		//max col
+		//grid_locations_.insert(std::pair<int, pair<int, int> >((int)i, make_pair(row, col)));
+	}
+	grid_locations_ = grid_locations;
+}
+
+bool Planner::inFront(pcl::PointCloud<PointT> cloud, int cluster_idx)
+{
+	int min_row = grid_locations_[cluster_idx][0];
+	int min_col = grid_locations_[cluster_idx][1];
+	int max_row = grid_locations_[cluster_idx][2];
+	int max_col = grid_locations_[cluster_idx][3];
+
+	if (min_row == 0)
+		return true;
+	else {
+		//Check if this col has any other object in the same col but lesser row
+		for (unsigned int i = 0; i < grid_locations_.size(); i++)
+		{
+			vector<int> temp_vec = grid_locations_[i];
+			if (temp_vec[1] == min_col && temp_vec[0] < min_row)
+				return false;
+			if (temp_vec[1] == max_col && temp_vec[0] < max_row)
+				return false;
+			if (temp_vec[3] == max_col && temp_vec[2] < max_row)
+				return false;
+			if (temp_vec[3] == min_col && temp_vec[2] < min_row)
+				return false;
+		}
+	}
+	ROS_ERROR("inFront: Should not be here.");
+	return true;
+}
+
 void Planner::findVisible(vector<sensor_msgs::PointCloud2> config,
 		vector<sensor_msgs::PointCloud2>& visible_clusters, vector<int>& visible_idx)
 {
 	//Find which clusters have full frontal visibility
 	for (size_t i = 0; i < config.size(); i++)
 	{
-		pcl::PointCloud<PointXYZRGB> cloud;
+		pcl::PointCloud<PointT> cloud;
 		fromROSMsg(config[i], cloud);
 
 		if (touchesTable(cloud, tableHeight_) && (cloud.points.size() >= 300)) {
 			//This cluster is in contact with the table
 			//ROS_DEBUG("Cluster %zu touches the table", i);
-			//if (convexPointCloud(cloud))
-				//Width is consistent throughout the height. So fully visible.
-				//ROS_DEBUG("Cluster %zu is fully visible", i);
-			visible_clusters.push_back(config[i]);
-			visible_idx.push_back((int)i);
+			if (inFront(cloud, (int)i))	{
+				ROS_DEBUG("Cluster %zu is fully visible", i);
+				visible_clusters.push_back(config[i]);
+				visible_idx.push_back((int)i);
+			}
 		}
 	}
 	visiblePub_.publish(concatClouds(visible_clusters));
@@ -617,7 +686,7 @@ void Planner::findPossibleMoves(sensor_msgs::PointCloud2& other_cloud,
 	//for (size_t cluster_idx = 0; cluster_idx < 3; cluster_idx++) {
 
 		//Finding source pose of this cluster
-		pcl::PointCloud<PointXYZRGB>::Ptr clusterCloud(new pcl::PointCloud<PointXYZRGB>);
+		pcl::PointCloud<PointT>::Ptr clusterCloud(new pcl::PointCloud<PointT>);
 		fromROSMsg(visible_clusters[cluster_idx], *clusterCloud);
 		tf::Vector3 min, max;
 		minmax3d(min, max, clusterCloud);
@@ -662,7 +731,7 @@ void Planner::simulateMove(vector<sensor_msgs::PointCloud2> config,
 
 	//Find what the new point cloud would be after the cluster has been moved
 	sensor_msgs::PointCloud2 moved_cloud2 = move.objectToMove;
-	pcl::PointCloud<PointXYZRGB>::Ptr moved_cloud(new pcl::PointCloud<PointXYZRGB>);
+	pcl::PointCloud<PointT>::Ptr moved_cloud(new pcl::PointCloud<PointT>);
 	fromROSMsg(moved_cloud2, *moved_cloud);
 
 	//Assuming only translation
@@ -731,8 +800,8 @@ void Planner::plan(int horizon,
 		action_sequence.push_back(this_move);
 
 		//Simulate move & find resulting config
-		pcl::PointCloud<pcl::PointXYZRGB>::Ptr config_cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-		pcl::PointCloud<pcl::PointXYZRGB>::Ptr new_config_cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+		pcl::PointCloud<PointT>::Ptr config_cloud(new pcl::PointCloud<PointT>);
+		pcl::PointCloud<PointT>::Ptr new_config_cloud(new pcl::PointCloud<PointT>);
 		fromROSMsg(other_cloud, *config_cloud);
 		ROS_DEBUG("Publishing current simulated config cloud on topic current_simulated_config");
 		pubCloud("current_simulated_config", config_cloud, fixed_frame_);
@@ -804,7 +873,7 @@ int main (int argc, char** argv)
 	ros::NodeHandle n;
 	//octomap::OcTree tree(0.05);
 	Planner planner(n, atoi(argv[1]));
-	//pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+	//pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     //tf::Stamped<tf::Pose> fixed_to_ik;
     //tf::Stamped<tf::Pose> base_to_camera;
 	
