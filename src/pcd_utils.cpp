@@ -59,9 +59,11 @@ int planar_seg(pcl::PointCloud<PointT>::Ptr orig_cloud,
   // Optional
   seg.setOptimizeCoefficients (true);
   // Mandatory
-  seg.setModelType (pcl::SACMODEL_PLANE);
+  seg.setModelType (pcl::SACMODEL_PERPENDICULAR_PLANE);
   seg.setMethodType (pcl::SAC_RANSAC);
   seg.setDistanceThreshold (0.01);
+  Eigen::Vector3f z_axis(0.0, 0.0, 1.0);			//for horizontal planes
+  seg.setAxis(z_axis);
 
   // Create the filtering object
   pcl::ExtractIndices<PointT> extract;
