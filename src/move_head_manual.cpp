@@ -12,13 +12,13 @@ private:
   PointHeadClient* point_head_client_;
 
 public:
-  //! Action client initialization
+  //! Action client initialization 
   RobotHead()
   {
     //Initialize the client for the Action interface to the head controller
     point_head_client_ = new PointHeadClient("/head_traj_controller/point_head_action", true);
 
-    //wait for head controller action server to come up
+    //wait for head controller action server to come up 
     while(!point_head_client_->waitForServer(ros::Duration(5.0))){
       ROS_INFO("Waiting for the point_head_action server to come up");
     }
@@ -29,7 +29,7 @@ public:
     delete point_head_client_;
   }
 
-  //! Points the high-def camera frame at a point in a given frame
+  //! Points the high-def camera frame at a point in a given frame  
   void lookAt(std::string frame_id, double x, double y, double z)
   {
     //the goal message we will be sending
@@ -41,9 +41,10 @@ public:
     point.point.x = x; point.point.y = y; point.point.z = z;
     goal.target = point;
 
-    //we are pointing the high-def camera frame
+    //we are pointing the high-def camera frame 
     //(pointing_axis defaults to X-axis)
     goal.pointing_frame = "high_def_frame";
+	//goal.pointing_frame = "head_mount_kinect_rgb_optical_frame";
 
     //take at least 0.5 seconds to get there
     goal.min_duration = ros::Duration(0.5);
@@ -62,15 +63,10 @@ public:
 
 int main(int argc, char** argv)
 {
-    if (argc != 4) {
-        ROS_ERROR("Incorrect number of arguments");
-        return -1;
-    }
-
   //init the ROS node
   ros::init(argc, argv, "robot_driver");
 
   RobotHead head;
-  head.lookAt("base_link", atof(argv[1]), atof(argv[2]), atof(argv[3]));
-  //head.lookAt("base_link", 0.2, 0.0, 1.0);
+  //head.lookAt("base_link", 0.2, -0.1, 1.36);
+  head.lookAt("base_link", 0.2, -0.1, 1.3);
 }

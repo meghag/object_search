@@ -45,6 +45,8 @@ rosbuild_add_executable(move_torso src/move_torso.cpp)
 rosbuild_add_executable(move_right_arm src/move_right_arm.cpp)
 rosbuild_add_executable(move_left_arm src/move_left_arm.cpp)
 
+rosbuild_add_executable(move_head_manual src/move_head_manual.cpp)
+
 #rosbuild_add_executable(euclidean_seg src/euclidean_segmentation.cpp)
 
 #rosbuild_add_executable(pointcloud_to_hull src/TableTopObject.cpp src/pointcloud_to_hull.cpp src/kinematics.cpp src/collision_testing.cpp)
