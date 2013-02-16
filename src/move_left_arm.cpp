@@ -25,7 +25,7 @@ int main(int argc, char** argv)
 
     //goalA.motion_plan_request.group_name = "left_arm";
     goalA.motion_plan_request.group_name = "left_arm";
-    goalA.motion_plan_request.num_planning_attempts = 1;
+    goalA.motion_plan_request.num_planning_attempts = 3;
     goalA.motion_plan_request.planner_id = std::string("");
     goalA.planner_service_name = std::string("ompl_planning/plan_kinematic_path");
     goalA.motion_plan_request.allowed_planning_time = ros::Duration(5.0);

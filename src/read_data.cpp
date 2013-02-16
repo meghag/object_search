@@ -44,14 +44,14 @@ Author: Megha Gupta
 std::string cloud_topic = "/head_mount_kinect/depth_registered/points";
 // std::string cloud_topic = "/narrow_stereo_textured/points2";
 
-typedef pcl::PointXYZRGB PointT;
+//typedef pcl::PointXYZRGB PointT;
 //typedef pcl::PointXYZ PointT;
 
 using namespace std;
 using namespace pcl;
 
-tf::Vector3 BB_MIN(0.4,-0.4,0.6);
-tf::Vector3 BB_MAX(1.0,0.4,1.0);
+tf::Vector3 BB_MIN(0.4,-0.6,0.9);
+tf::Vector3 BB_MAX(1.5,0.6,1.3);
 
 class ReadData
 {
@@ -122,7 +122,7 @@ private:
     //pass_through_gen(cloud,pcdFiltered,true,0,1,true,-0.32,0.32,true,1.012,1.3);   // Kinect and shelf
     //pass_through_gen(cloud,pcdFiltered,true,0,1,true,-0.32,0.32,true,1.07,1.3);    // Narrow stereo and shelf
     //pass_through_gen(cloud,pcdFiltered,true,0,1.4,true,-1.0,1.0,true,0.81,1.1);      // Narrow stereo and simulation table
-    pass_through_gen(cloud,pcdFiltered,true,BB_MIN.x(),BB_MAX.x(),true,BB_MIN.y(),BB_MAX.y(),true,BB_MIN.z(),BB_MAX.z());      // Narrow stereo and simulation table
+    pass_through_gen(cloud,pcdFiltered,true,BB_MIN.x(),BB_MAX.x(),true,BB_MIN.y(),BB_MAX.y(),true,BB_MIN.z(),BB_MAX.z()-0.05);      // Narrow stereo and simulation table
     if (pcdFiltered->points.size() > 0) {
       new_data_wanted_ = false;
       toROSMsg(*pcdFiltered, topub);
@@ -136,7 +136,7 @@ private:
 
       tf::Vector3 min, max;
       minmax3d(min, max, planarCloud);
-      pass_through_gen(pcdFiltered,objectCloud,true,min.x(),max.x(),true,min.y(),max.y(),true, max.z(), BB_MAX.z());
+      pass_through_gen(pcdFiltered,objectCloud,true,min.x(),max.x()-0.05,true,min.y()+0.05,max.y()-0.05,true, max.z()+0.01, BB_MAX.z());
       toROSMsg(*objectCloud, *objectCloud2);
 
       /*********** Voxel grid downsampling *********/
@@ -155,14 +155,14 @@ private:
       //Create a plan request
       tum_os::PlanRequest plan_request;
       plan_request.object_cloud = *filteredObjectCloud2;
-      plan_request.table_height = max.z();
+      plan_request.table_height = max.z()+0.01;
       plan_request.bb_min.resize(3);
-      plan_request.bb_min[0] = min.x()+0.1;
-      plan_request.bb_min[1] = min.y()+0.2;			//0.1; temp hack to not use left arm
+      plan_request.bb_min[0] = min.x();
+      plan_request.bb_min[1] = min.y()+0.05;			//0.1; temp hack to not use left arm
       plan_request.bb_min[2] = max.z();
       plan_request.bb_max.resize(3);
-      plan_request.bb_max[0] = max.x()-0.1;
-      plan_request.bb_max[1] = max.y()-0.1;
+      plan_request.bb_max[0] = max.x()-0.05;
+      plan_request.bb_max[1] = max.y()-0.05;
       plan_request.bb_max[2] = BB_MAX.z();
       planRequestPub_.publish(plan_request);
       ROS_INFO("bb_min: %f, %f, %f     bb_max: %f, %f, %f", min.x(), min.y(), max.z(),

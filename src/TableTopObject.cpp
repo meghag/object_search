@@ -4,31 +4,31 @@ using namespace octomap;
 
 TableTopObject::TableTopObject()
 {
-    cloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
+    cloud.reset(new pcl::PointCloud<PointT>);
     has_octo = false;
 }
 
 
-TableTopObject::TableTopObject(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box)
+TableTopObject::TableTopObject(pcl::PointCloud<PointT>::Ptr cloud_in_box)
 {
-    cloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
+    cloud.reset(new pcl::PointCloud<PointT>);
     cloud = cloud_in_box;
     has_octo = false;
 }
 
 
-TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box)
+TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<PointT>::Ptr cloud_in_box)
 {
     // is that necessary?
-    cloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
+    cloud.reset(new pcl::PointCloud<PointT>);
     has_octo = false;
     addPointCloud(sensorOrigin,tableHeight,cloud_in_box);
 }
 
-TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB> cloud_in_box)
+TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<PointT> cloud_in_box)
 {
     // is that necessary?
-    cloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
+    cloud.reset(new pcl::PointCloud<PointT>);
     has_octo = false;
     addPointCloud2(sensorOrigin,tableHeight,cloud_in_box);
 }
@@ -55,7 +55,7 @@ void TableTopObject::initOcto()
 
 }
 
-void TableTopObject::projectToPlanePerspective(const tf::Vector3 sensorOrigin, const double tableHeight, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_projected)
+void TableTopObject::projectToPlanePerspective(const tf::Vector3 sensorOrigin, const double tableHeight, const pcl::PointCloud<PointT>::Ptr &cloud, pcl::PointCloud<PointT>::Ptr &cloud_projected)
 {
     for (size_t i = 0; i < cloud->points.size(); i++)
     {
@@ -64,7 +64,7 @@ void TableTopObject::projectToPlanePerspective(const tf::Vector3 sensorOrigin, c
         float factor = (tableHeight - sensorOrigin.z()) / fromSens.z();
         fromSens *= factor;
         fromSens += sensorOrigin;
-        pcl::PointXYZRGB newpt = cloud->points[i];
+        PointT newpt = cloud->points[i];
         newpt.x = fromSens.x();
         newpt.y = fromSens.y();
         newpt.z = fromSens.z();
@@ -72,7 +72,7 @@ void TableTopObject::projectToPlanePerspective(const tf::Vector3 sensorOrigin, c
     }
 }
 
-void TableTopObject::projectToPlanePerspective2(const tf::Vector3 sensorOrigin, const double tableHeight, const pcl::PointCloud<pcl::PointXYZRGB>& cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_projected)
+void TableTopObject::projectToPlanePerspective2(const tf::Vector3 sensorOrigin, const double tableHeight, const pcl::PointCloud<PointT>& cloud, pcl::PointCloud<PointT>::Ptr &cloud_projected)
 {
     for (size_t i = 0; i < cloud.points.size(); i++)
     {
@@ -81,7 +81,7 @@ void TableTopObject::projectToPlanePerspective2(const tf::Vector3 sensorOrigin, 
         float factor = (tableHeight - sensorOrigin.z()) / fromSens.z();
         fromSens *= factor;
         fromSens += sensorOrigin;
-        pcl::PointXYZRGB newpt = cloud.points[i];
+        PointT newpt = cloud.points[i];
         newpt.x = fromSens.x();
         newpt.y = fromSens.y();
         newpt.z = fromSens.z();
@@ -89,7 +89,7 @@ void TableTopObject::projectToPlanePerspective2(const tf::Vector3 sensorOrigin, 
     }
 }
 
-void TableTopObject::addPointCloud(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box)
+void TableTopObject::addPointCloud(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<PointT>::Ptr cloud_in_box)
 {
     initOcto();
 
@@ -99,7 +99,7 @@ void TableTopObject::addPointCloud(const tf::Vector3 sensorOrigin, const double 
 		//cloud_copy->points.push_back(cloud_in_box->points[i]);
     }
 
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<PointT>::Ptr cloud_in_box_projected (new pcl::PointCloud<PointT>);
 
     projectToPlanePerspective(sensorOrigin, tableHeight ,cloud_in_box, cloud_in_box_projected);
 
@@ -132,7 +132,7 @@ void TableTopObject::addPointCloud(const tf::Vector3 sensorOrigin, const double 
 
 }
 
-void TableTopObject::addPointCloud2(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB> cloud_in_box)
+void TableTopObject::addPointCloud2(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<PointT> cloud_in_box)
 {
     initOcto();
 
@@ -142,7 +142,7 @@ void TableTopObject::addPointCloud2(const tf::Vector3 sensorOrigin, const double
 		//cloud_copy->points.push_back(cloud_in_box.points[i]);
     }
 
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected(new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<PointT>::Ptr cloud_in_box_projected(new pcl::PointCloud<PointT>);
 
     projectToPlanePerspective2(sensorOrigin, tableHeight, cloud_in_box, cloud_in_box_projected);
 
@@ -176,14 +176,14 @@ void TableTopObject::addPointCloud2(const tf::Vector3 sensorOrigin, const double
 }
 
 /*
-void TableTopObject::addPointCloudToCopy(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_add)
+void TableTopObject::addPointCloudToCopy(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<PointT>::Ptr cloud_to_add)
 {	
     for (size_t i = 0; i < cloud_to_add->points.size(); i++)
     {
         cloud_copy->points.push_back(cloud_to_add->points[i]);
     }
 	
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_add_projected (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<PointT>::Ptr cloud_to_add_projected (new pcl::PointCloud<PointT>);
 	
     projectToPlanePerspective(sensorOrigin, tableHeight, cloud_to_add, cloud_to_add_projected);
 	
@@ -334,10 +334,10 @@ bool TableTopObject::checkCoveredPointcloud(tf::Transform ownTransform, tf::Tran
 
 
 
-pcl::PointCloud<pcl::PointXYZRGB>::Ptr TableTopObject::getAsCloud()
+pcl::PointCloud<PointT>::Ptr TableTopObject::getAsCloud()
 {
 
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
 
     for (OcTreeROS::OcTreeType::iterator it = m_octoMap->octree.begin(16),
             end = m_octoMap->octree.end(); it != end; ++it)
@@ -345,7 +345,7 @@ pcl::PointCloud<pcl::PointXYZRGB>::Ptr TableTopObject::getAsCloud()
         if (m_octoMap->octree.isNodeOccupied(*it))
         {
 
-            pcl::PointXYZRGB pt;
+            PointT pt;
 
             pt.x = it.getX();
             pt.y = it.getY();

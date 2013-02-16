@@ -55,7 +55,7 @@ using namespace pcl;
 using namespace octomap;
 using namespace std;
 
-typedef pcl::PointXYZRGB PointT;
+//typedef pcl::PointXYZRGB PointT;
 
 //std::string fixed_frame_ = "tum_os_table";
 std::string fixed_frame_ = "base_link";

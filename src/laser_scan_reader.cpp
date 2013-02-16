@@ -102,9 +102,9 @@ public:
 		pr2_arm_navigation_perception::BuildCloudAngle::Request snap_req;
 		pr2_arm_navigation_perception::BuildCloudAngle::Response snap_res;
 
-		snap_req.angle_begin = -0.6;			//angle above the XY plane
-		snap_req.angle_end = 0.5;				//angle below the XY plane
-		snap_req.duration = 8.0;
+		snap_req.angle_begin = -0.9;			//angle above the XY plane
+		snap_req.angle_end = 0.8;				//angle below the XY plane
+		snap_req.duration = 10.0;
 
 		if (!ros::service::call("laser_assembler_server/single_sweep_cloud", snap_req, snap_res)){
 			ROS_ERROR("PointCloud: error setting laser snapshotter service");
@@ -188,6 +188,7 @@ public:
 			toROSMsg(*objectCloud, *objectCloud2);
 
 			/*********** Voxel grid downsampling *********/
+			/*
 			std::cerr << "Object Point Cloud before filtering: " << objectCloud2->width * objectCloud2->height
 					<< " data points (" << pcl::getFieldsList (*objectCloud2) << ").";
 			// Create the filtering object
@@ -199,10 +200,13 @@ public:
 					<< " data points (" << pcl::getFieldsList (*filteredObjectCloud2) << ").";
 
 			object_pub_.publish(*filteredObjectCloud2);
+			*/
+			object_pub_.publish(*objectCloud2);
 
 			//Create a plan request
 			tum_os::PlanRequest plan_request;
-			plan_request.object_cloud = *filteredObjectCloud2;
+			//plan_request.object_cloud = *filteredObjectCloud2;
+			plan_request.object_cloud = *objectCloud2;
 			plan_request.table_height = max.z();
 			plan_request.bb_min.resize(3);
 			plan_request.bb_min[0] = min.x()+0.05;

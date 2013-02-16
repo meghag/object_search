@@ -306,6 +306,7 @@ TableTopObject Planner::createTTO(sensor_msgs::PointCloud2& cloud2)
 
 void Planner::make_grid()
 {
+	ROS_INFO("Imposing a grid.");
 	float grid_resolution = 0.0;
 	for (size_t i = 0; i < clustersDetected_.size(); i++)
 	{
@@ -318,15 +319,12 @@ void Planner::make_grid()
 		if (std::max(x_size, y_size) > grid_resolution)
 			grid_resolution = std::max(x_size, y_size);
 	}
+	ROS_INFO("Grid resolution = %f", grid_resolution);
 	grid_resolution_ = grid_resolution;
 }
 
 void Planner::planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_request)
 {
-	//clustersDetected_ = plan_request.clusters;
-	//targetCloud2_ = plan_request.target_cloud;
-	//tum_os::Clusters clusters_msg;
-	//ROS_INFO("MG: Waiting for message on topic clusters");
 	//clusters_msg  = *(ros::topic::waitForMessage<tum_os::Clusters>("/clusters"));
 
 	objectCloud2_ = plan_request->object_cloud;
@@ -334,15 +332,20 @@ void Planner::planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_requ
 	BB_MIN = tf::Vector3(plan_request->bb_min[0], plan_request->bb_min[1], plan_request->bb_min[2]);
 	BB_MAX = tf::Vector3(plan_request->bb_max[0], plan_request->bb_max[1], plan_request->bb_max[2]);
 	ROS_INFO("table height = %f", tableHeight_);
-	
-	//Euclidean segmentation
 	objectCloudPub_.publish(objectCloud2_);
 
 	//TODO: Fill in the hollows of cluster point clouds
-	cluster(objectCloud2_, 0.02, 50, 1000, clustersDetected_);
+	//Euclidean segmentation
+	cluster(objectCloud2_, 0.02, 50, 10000, clustersDetected_);
 	//cluster(objectCloud2_, 0.02, 300, 1000, clustersDetected_);
 
 	ROS_INFO("Found %zu clusters", clustersDetected_.size());
+	if (clustersDetected_.size() == 0) {
+		ROS_ERROR("EXITING.");
+		//ros::shutdown();
+	}
+	/*
+	 //Detecting target object based on color
 	for (size_t i = 0; i < clustersDetected_.size(); i++)
 	{
 		clustersDetected_[i].header.frame_id = "base_link";
@@ -355,6 +358,7 @@ void Planner::planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_requ
 		}
 		//breakpoint();
 	}
+	*/
 
 	//TODO: Impose a grid on the bbx with resolution = max cluster size.
 	//Then calculate row & col of each cluster.
@@ -393,7 +397,7 @@ void Planner::planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_requ
 	}
 
 	//Execute plan
-	execute_plan();
+	//execute_plan();
 
 	if (new_data_wanted_)
 	{
@@ -514,9 +518,9 @@ bool Planner::checkHiddenOrVisible(sensor_msgs::PointCloud2 object_cloud2,
         	pt.x = coord.x();
         	pt.y = coord.y();
         	pt.z = coord.z();
-        	pt.r = cloud.points[i].r;
-        	pt.g = cloud.points[i].g;
-        	pt.b = cloud.points[i].b;
+        	//pt.r = cloud.points[i].r;
+        	//pt.g = cloud.points[i].g;
+        	//pt.b = cloud.points[i].b;
         	temp.points[i] = pt;
         }
 
@@ -613,11 +617,15 @@ void Planner::findGridLocations(vector<sensor_msgs::PointCloud2> config)
 		fromROSMsg(config[i], *cloud);
 		tf::Vector3 min, max;
 		minmax3d(min, max, cloud);
+		//Rows are front to back, columns are left to right
+		grid_locations[i][0] = ceil((BB_MAX.getY() - max.getY())/grid_resolution_);		//min row
 		grid_locations[i][0] = (int)(min.getY() - BB_MIN.getY())/grid_resolution_;		//min row
 		grid_locations[i][1] = (int)(min.getX() - BB_MIN.getX())/grid_resolution_;		//min col
-		grid_locations[i][2] = (int)(max.getY() - BB_MAX.getY())/grid_resolution_;		//max row
+
 		grid_locations[i][3] = (int)(max.getX() - BB_MAX.getX())/grid_resolution_;		//max col
 		//grid_locations_.insert(std::pair<int, pair<int, int> >((int)i, make_pair(row, col)));
+		ROS_INFO("Grid location for cluster %zu: %d %d %d %d", i, grid_locations[i][0], grid_locations[i][1],
+				grid_locations[i][2], grid_locations[i][3]);
 	}
 	grid_locations_ = grid_locations;
 }
@@ -659,11 +667,11 @@ void Planner::findVisible(vector<sensor_msgs::PointCloud2> config,
 		pcl::PointCloud<PointT> cloud;
 		fromROSMsg(config[i], cloud);
 
-		if (touchesTable(cloud, tableHeight_) && (cloud.points.size() >= 300)) {
+		if (touchesTable(cloud, tableHeight_) && (cloud.points.size() >= 200)) {
 			//This cluster is in contact with the table
-			//ROS_DEBUG("Cluster %zu touches the table", i);
+			ROS_INFO("Cluster %zu touches the table", i);
 			if (inFront(cloud, (int)i))	{
-				ROS_DEBUG("Cluster %zu is fully visible", i);
+				ROS_INFO("Cluster %zu is in front and fully visible", i);
 				visible_clusters.push_back(config[i]);
 				visible_idx.push_back((int)i);
 			}
@@ -766,6 +774,8 @@ void Planner::plan(int horizon,
 	ROS_DEBUG("Sampling target object pose in occluded space");
 	std::vector<tf::Pose> object_posterior_belief;
 	samplePose(targetCloud2_, createTTO(other_cloud), object_posterior_belief, true, false);
+
+	findGridLocations(config);
 
 	//Find visible clusters
 	ROS_DEBUG("Finding visible clusters");
