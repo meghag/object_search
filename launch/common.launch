@@ -1,5 +1,0 @@
-<launch>
-	<node name="euclidean_seg" pkg="tum_os" type="euclidean_seg" args="1" respawn="true" output="screen"/>
-  <node name="collect_data" pkg="tum_os" type="collect_data" respawn="true" output="screen"/>
-	<!-- <node name="push" pkg="tum_os" type="push_try" respawn="true" output="screen"/> -->
-</launch>

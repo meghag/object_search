@@ -26,6 +26,7 @@
 #include <geometry_msgs/Transform.h>
 #include <geometry_msgs/PoseArray.h>
 #include <tf/tf.h>
+#include <visualization_msgs/Marker.h>
 //#include <tf_conversions/tf_eigen.h>
 
 extern "C" {
@@ -38,18 +39,15 @@ extern "C" {
 #include <boost/foreach.hpp>
 #include <tf/LinearMath/Quaternion.h>
 #include <tf/LinearMath/Matrix3x3.h>
+#include <object_manipulation_msgs/FindClusterBoundingBox2.h>
+#include <object_manipulation_msgs/ClusterBoundingBox.h>
 
-//#include "set_marker.h"
-//#include "create_marker_array.h"
 #include "pcd_utils.h"
-
 #include "TableTopObject.h"
 //#include <tum_os/Clusters.h>
 #include <tum_os/PlanRequest.h>
 #include <tum_os/Execute_Plan.h>
 #include <tum_os/Get_New_PCD.h>
-
-//#include "object_search_pkg/Plan_Actions.h"
 
 using namespace pcl;
 using namespace octomap;
@@ -97,9 +95,6 @@ public:
 
 private:
 	//Functions
-	//bool planActionsCallback(object_search_pkg::Plan_Actions::Request &req,
-	//		object_search_pkg::Plan_Actions::Response &res);
-
 	void planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_request);
 	void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses);
 	void pubCloud(const std::string &topic_name, const pcl::PointCloud<PointT>::Ptr &cloud, std::string frame_id);
@@ -109,7 +104,7 @@ private:
 	TableTopObject createTTO(sensor_msgs::PointCloud2& cloud2);
 	void findGridLocations(vector<sensor_msgs::PointCloud2> config);
 	bool inFront(pcl::PointCloud<PointT> cloud, int cluster_idx);
-	void make_grid();
+	void make_grid(vector<sensor_msgs::PointCloud2> config);
 
 	void samplePose(sensor_msgs::PointCloud2 target_cloud2,
 					TableTopObject otherCloudTTO,
@@ -124,18 +119,21 @@ private:
 					 bool check_hidden,
 					 bool check_visible);
 
-	bool generatePercentage(vector<tf::Pose> object_belief,
-			vector<sensor_msgs::PointCloud2> visible_clusters,
-			vector<int> visible_idx,
+	bool generatePercentageIfRemoved(vector<tf::Pose> object_belief,
+			vector<sensor_msgs::PointCloud2> movable_clusters,
+			vector<int> movable_idx,
 			map<int, double>& percentage);
 
-	void findVisible(vector<sensor_msgs::PointCloud2> config,
-			vector<sensor_msgs::PointCloud2>& visible_clusters,
-			vector<int>& visible_idx);
+	double generatePercentageIfDisplaced(vector<tf::Pose> object_belief,
+									 vector<sensor_msgs::PointCloud2> new_config);
+
+	void findMovable(vector<sensor_msgs::PointCloud2> config,
+			vector<sensor_msgs::PointCloud2>& movable_clusters,
+			vector<int>& movable_idx);
 
 	void findPossibleMoves(sensor_msgs::PointCloud2& config,
-			vector<sensor_msgs::PointCloud2> visible_clusters,
-			vector<int> visible_idx,
+			vector<sensor_msgs::PointCloud2> movable_clusters,
+			vector<int> movable_idx,
 			vector<Move>& possible_moves);
 
 	void plan(int horizon,
@@ -149,22 +147,23 @@ private:
 
 	void execute_plan();
 
-	//bool callGraspingService (void);
-	//int findHiddenVoxels(PointCloud<PointXYZ>::Ptr& object);
-	//vector<geometry_msgs::Point> find_corners(PointCloud<PointXYZ>::Ptr& cloud);
-	//bool callNewDataService (void);
+	void getClusterBoundingBox(const sensor_msgs::PointCloud2 &cluster,
+				geometry_msgs::PoseStamped &pose_stamped,
+				geometry_msgs::Vector3 &dimensions);
 
 	//Publishers, Subscribers, Service servers & clients
 	ros::NodeHandle n_;
 	ros::Subscriber planRequestSub_;
 	ros::Publisher objectCloudPub_;
+	ros::Publisher gridPub_;
 	ros::Publisher clustersPub_;
-	ros::Publisher visiblePub_;
+	ros::Publisher movablePub_;
 	ros::Publisher newPosePub_;
 	ros::Publisher source_pose_pub_;
 	ros::Publisher dest_pose_pub_;
 	ros::ServiceClient manipulateClient_;
 	ros::ServiceClient newpcdClient_;
+	ros::ServiceClient bbx_client_;
 	
 	//Variables
 	sensor_msgs::PointCloud2 targetCloud2_;
@@ -179,13 +178,7 @@ private:
 	bool new_data_wanted_;
 	int MAX_HORIZON;
 	float grid_resolution_;
-	//multimap<int, pair<int, int> > grid_locations_;
 	vector<vector<int> > grid_locations_;
-
-	//map<pair<int,PointCloud<PointXYZ> > > knownObjects_;			//Map of known object point clouds with keys as object id
-	//map<pair<int,PointCloud<PointXYZ> > > visibleObjects_;			//Map of visible object point clouds with keys as object id
-	//float treeResolution_;
-	//octomap::OcTree tree_;
 };
 
 #endif

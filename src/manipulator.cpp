@@ -102,19 +102,22 @@ vector<geometry_msgs::Point> Manipulator::waypoints(size_t idx)
 	geometry_msgs::Point center = bbx_.pose_stamped.pose.position;
 	geometry_msgs::Point temp = center;
 	geometry_msgs::Point temp2 = dest_pose_[idx].position;
-	temp.z += 0.2;
-	wp.push_back(temp);				//Above the object
-	temp.z = center.z + bbx_.dimensions.z*0.5 - 0.01;
+	temp.x -= 0.1;
+	wp.push_back(temp);				//In front of the object
+	temp.x = center.x;	// + bbx_.dimensions.z*0.5 - 0.01;
 	wp.push_back(temp);				//Around the object
-	temp.z += 0.1;
+	temp.z += 0.05;
+	temp.x -= 0.1;
 	wp.push_back(temp);				//Up in the air with the object
-	temp2.z += 0.2;
-	wp.push_back(temp2);			//Above the destination pose with the object in hand
+	temp2.x -= 0.1;
+	temp2.z = temp.z;
+	wp.push_back(temp2);			//Near the destination pose with the object in hand
 	//temp2.z -= 0.01;
-	temp2.z = dest_pose_[idx].position.z + bbx_.dimensions.z*0.5;
+	temp2.x = dest_pose_[idx].position.x;	// + bbx_.dimensions.z*0.5;
+	temp2.z += 0.05;
 	wp.push_back(temp2);			//At the destination with hand around the object
-	temp2.z += 0.1;
-	wp.push_back(temp2);			//Above the destination pose
+	temp2.x -= 0.1;
+	wp.push_back(temp2);			//Near the destination pose
 
 	return wp;
 }
@@ -165,10 +168,10 @@ bool Manipulator::pick_n_place(size_t idx)
 				breakpoint();
 			} else if (i == 3 && (move_arm(wp[i], 100, 0, false, 1, 0) == 0)) {
 				breakpoint();
-			} else if (i == 4 && (move_arm(wp[i], 1, 0, false, 2, 0) == 0)) {
+			} else if (i == 4 && (move_arm(wp[i], 1, 0, false, 1, 0) == 0)) {
 				gripper_.open(active_arm_sym_);
 				breakpoint();
-			} else if (i > 4 && (move_arm(wp[i], 1, 0, false, 2, 0) == 0)) {
+			} else if (i > 4 && (move_arm(wp[i], 1, 0, false, 1, 0) == 0)) {
 				breakpoint();
 			} else {
 				success= false;
@@ -176,10 +179,10 @@ bool Manipulator::pick_n_place(size_t idx)
 				breakpoint();
 				if (i > 0) {
 					geometry_msgs::Point temp = wp[i-1];
-					temp.z = table_height_ + bbx_.dimensions.z - 0.01;
+					//temp.z = table_height_ + bbx_.dimensions.z - 0.01;
 					move_arm(temp, 1, 0, false, 2, 0);
 					gripper_.open(active_arm_sym_);
-					temp.z += 0.2;
+					temp.x -= 0.1;
 					move_arm(temp, 1, 0, false, 2, 0);
 					move_arm(active_reset_, 1, 0, false, 2, 1);
 				}
@@ -441,11 +444,7 @@ int Manipulator::move_arm(geometry_msgs::Point go_to, int cluster_id,
 	if (plan_id == 1 && action == 1)
 		//desired_pose.pose.position.z = go_to.z + 0.002;
 		desired_pose.pose.position.z = go_to.z + 0.19;
-	else if (plan_id == 2 && action == 1)
-		desired_pose.pose.position.x = go_to.x - 0.08;
-	else if (plan_id < 3 && action == 2)
-		desired_pose.pose.position.z = go_to.z+0.155;
-	else if (plan_id >= 3 && action == 2)
+	else if (plan_id == 2)
 		desired_pose.pose.position.x = go_to.x - 0.08;
 	else if (action == 0)
 	{
@@ -463,7 +462,7 @@ int Manipulator::move_arm(geometry_msgs::Point go_to, int cluster_id,
 		desired_pose.pose.orientation.y = -0.04; //-0.04;
 		desired_pose.pose.orientation.z = 0.67;
 		desired_pose.pose.orientation.w = -0.04; //-0.04;
-	} else if (action == 0) {
+	} else if (action == 0 && plan_id == 2) {
 		// specify rotation in rpy or other methods (euler)
 		tf::Transform t1, t2, t3;
 		tf::Quaternion q1, q3, q4;

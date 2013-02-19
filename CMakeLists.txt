@@ -35,8 +35,8 @@ rosbuild_add_library(pcd_utils src/pcd_utils.cpp)
 rosbuild_add_executable(read_data src/read_data.cpp)
 target_link_libraries(read_data pcd_utils)
 
-rosbuild_add_executable(laser_scan_reader src/laser_scan_reader.cpp)
-target_link_libraries(laser_scan_reader pcd_utils)
+#rosbuild_add_executable(laser_scan_reader src/laser_scan_reader.cpp)
+#target_link_libraries(laser_scan_reader pcd_utils)
 
 #rosbuild_add_executable(test_laser src/test_laser.cpp)
 #rosbuild_add_executable(laser_assembler_server src/laser_assembler_server.cpp)

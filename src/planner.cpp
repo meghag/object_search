@@ -2,29 +2,6 @@
 
 //void pubCloud(const std::string &topic_name, const pcl::PointCloud<PointT>::Ptr &cloud, std::string frame_id = fixed_frame_);
 
-/*
-bool convexPointCloud(pcl::PointCloud<PointT> cloud)
-{
-	//TODO Think of how to implement this to find out which objects are in front.
-
-	ROS_DEBUG("Inside convexPointCloud");
-
-	//First project the cloud on vertical plane?
-
-	vector<double> vecx, vecy, vecz;
-	for (vector<PointT, Eigen::aligned_allocator<PointT> >::iterator it1 = cloud.points.begin(); it1 != cloud.points.end(); ++it1) {
-		vecx.push_back(it1->x);
-		vecy.push_back(it1->y);
-		vecz.push_back(it1->z);
-	}
-	vector<double>::iterator it_minx, it_miny, it_minz, it_maxx, it_maxy, it_maxz;
-	it_minz = min_element(vecz.begin(), vecz.end());
-	it_maxz = max_element(vecz.begin(), vecz.end());
-
-	return true;
-}
-*/
-
 bool inside(tf::Vector3 point, tf::Vector3 bbmin, tf::Vector3 bbmax)
 {
     if ((point.x() > bbmin.x()) && (point.x() < bbmax.x()) &&
@@ -49,16 +26,6 @@ geometry_msgs::Pose tfPoseToGeometryPose(tf::Pose tp)
 
 	return gp;
 }
-
-/*
-void printRotationMatrix(tf::Pose p)
-{
-	ROS_DEBUG("Rotation matrix:\n %f %f %f \n %f %f %f \n %f %f %f",
-			p.getBasis[0][0], p.getBasis[0][1], p.getBasis[0][2],
-			p.getBasis[1][0], p.getBasis[1][1], p.getBasis[1][2],
-			p.getBasis[2][0], p.getBasis[2][1], p.getBasis[2][2]);
-}
-*/
 
 //van der corput sequence
 double vdc(int n, double base = 2)
@@ -116,13 +83,15 @@ Planner::Planner (ros::NodeHandle& n, int horizon): n_(n), MAX_HORIZON(horizon)
 
 	planRequestSub_ = n_.subscribe("plan_request", 1, &Planner::planRequestCallback, this);
 	objectCloudPub_ = n_.advertise<sensor_msgs::PointCloud2>("object_cloud",1);
+	gridPub_ = n_.advertise<visualization_msgs::Marker>("grid",2);
 	clustersPub_ = n_.advertise<sensor_msgs::PointCloud2>("one_cluster",1);
-	visiblePub_ = n_.advertise<sensor_msgs::PointCloud2>("visible_clusters",1);
+	movablePub_ = n_.advertise<sensor_msgs::PointCloud2>("movable_clusters",1);
 	newPosePub_ = n_.advertise<sensor_msgs::PointCloud2>("new_pose",1);
 	manipulateClient_ = n_.serviceClient<tum_os::Execute_Plan>("execute_plan");
 	newpcdClient_ = n.serviceClient<tum_os::Get_New_PCD>("get_new_pcd");
 	source_pose_pub_ = n_.advertise<geometry_msgs::PoseStamped>("planner_source_pose", 1);
 	dest_pose_pub_ = n_.advertise<geometry_msgs::PoseStamped>("planner_dest_pose", 1);
+	bbx_client_ = n_.serviceClient<object_manipulation_msgs::FindClusterBoundingBox2>("/find_cluster_bounding_box2");
 
 	new_data_wanted_ = false;
 
@@ -304,25 +273,6 @@ TableTopObject Planner::createTTO(sensor_msgs::PointCloud2& cloud2)
 	return cloudTTO;
 }
 
-void Planner::make_grid()
-{
-	ROS_INFO("Imposing a grid.");
-	float grid_resolution = 0.0;
-	for (size_t i = 0; i < clustersDetected_.size(); i++)
-	{
-		pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
-		fromROSMsg(clustersDetected_[i], *cloud);
-		tf::Vector3 min, max;
-		minmax3d(min, max, cloud);
-		float x_size = max.getX() - min.getX();
-		float y_size = max.getY() - min.getY();
-		if (std::max(x_size, y_size) > grid_resolution)
-			grid_resolution = std::max(x_size, y_size);
-	}
-	ROS_INFO("Grid resolution = %f", grid_resolution);
-	grid_resolution_ = grid_resolution;
-}
-
 void Planner::planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_request)
 {
 	//clusters_msg  = *(ros::topic::waitForMessage<tum_os::Clusters>("/clusters"));
@@ -333,6 +283,45 @@ void Planner::planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_requ
 	BB_MAX = tf::Vector3(plan_request->bb_max[0], plan_request->bb_max[1], plan_request->bb_max[2]);
 	ROS_INFO("table height = %f", tableHeight_);
 	objectCloudPub_.publish(objectCloud2_);
+
+	//if (1) {
+	//Display BBX in RViz
+	visualization_msgs::Marker marker;
+	marker.header.frame_id = "base_link";
+	marker.header.stamp = ros::Time::now();
+	marker.ns = "bbx";
+	marker.id = 1;
+	// Set the marker type.  Initially this is CUBE, and cycles between that and SPHERE, ARROW, and CYLINDER
+	marker.type = visualization_msgs::Marker::LINE_STRIP;
+	marker.action = visualization_msgs::Marker::ADD;
+	// Set the pose of the marker.  This is a full 6DOF pose relative to the frame/time specified in the header
+	//marker.pose = pose;
+	// Set the scale of the marker -- 1x1x1 here means 1m on a side
+	marker.scale.x = 0.005;
+	marker.color.r = 1.0;
+	marker.color.g = 0.0;
+	marker.color.b = 1.0;
+	marker.color.a = 1.0;
+	marker.lifetime = ros::Duration(0.0);
+	vector<geometry_msgs::Point> points;
+	points.resize(5);
+	geometry_msgs::Point pt;
+	pt.z = 1.01;
+
+	pt.x = BB_MIN.getX();
+	pt.y = BB_MIN.getY();
+	points[0] = pt;
+	pt.y = BB_MAX.getY();
+	points[1] = pt;
+	pt.x = BB_MAX.getX();
+	points[2] = pt;
+	pt.y = BB_MIN.getY();
+	points[3] = pt;
+	pt.x = BB_MIN.getX();
+	points[4] = pt;
+	marker.points = points;
+	gridPub_.publish(marker);
+	//}
 
 	//TODO: Fill in the hollows of cluster point clouds
 	//Euclidean segmentation
@@ -359,11 +348,6 @@ void Planner::planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_requ
 		//breakpoint();
 	}
 	*/
-
-	//TODO: Impose a grid on the bbx with resolution = max cluster size.
-	//Then calculate row & col of each cluster.
-	//Based on that, check whether any object lies in front of it.
-	make_grid();
 
 	vector<Move> best_next_action_sequence;
 	double total_percentage_revealed_so_far = 0.0;
@@ -447,6 +431,7 @@ void Planner::samplePose(sensor_msgs::PointCloud2 target_cloud2,
 
     tf::Vector3 min, max;
     minmax3d(min, max, targetCloud);
+    float object_height = max.getZ() - min.getZ();
     //ROS_DEBUG("Cloud z midpoint = %f", min.z() + (max.z() - min.z())/2.0);
 
     tf::Transform identity;
@@ -455,13 +440,15 @@ void Planner::samplePose(sensor_msgs::PointCloud2 target_cloud2,
     {
     	//ROS_DEBUG("%f, %f, %f", it->getOrigin().getX(), it->getOrigin().getY(), it->getOrigin().getZ());
     	//Check if the resulting pose touches the table
-    	if (check_visible && abs(it->getOrigin().getZ() - tableHeight_) <= 0.02) {
+    	if (check_visible && (it->getOrigin().getZ() - object_height/2 - tableHeight_ <= 0.02) &&
+    			(it->getOrigin().getZ() - object_height/2 - tableHeight_ > 0)) {
     		//TODO If the object is too big to grasp, sample only in neighborhood & use push primitive
     		//Note that push can only be to the right or left
     		//Now check if the pose is hidden or not
     		if (checkHiddenOrVisible(target_cloud2, otherCloudTTO, *it, identity, check_hidden, check_visible))
     			object_posterior_belief.push_back(*it);
-    	} else if (check_hidden && abs(it->getOrigin().getZ() - tableHeight_) <= 0.02)
+    	} else if (check_hidden && (it->getOrigin().getZ() - object_height/2 - tableHeight_ <= 0.02) &&
+    			(it->getOrigin().getZ() - object_height/2 - tableHeight_ > 0))
     		//Reject samples that are not on table but in the air.
     		if (checkHiddenOrVisible(target_cloud2, otherCloudTTO, *it, identity, check_hidden, check_visible))
     			object_posterior_belief.push_back(*it);
@@ -556,25 +543,169 @@ bool Planner::checkHiddenOrVisible(sensor_msgs::PointCloud2 object_cloud2,
     return true;
 }
 
-bool Planner::generatePercentage(vector<tf::Pose> object_belief,
-								 vector<sensor_msgs::PointCloud2> visible_clusters,
-								 vector<int> visible_idx,
+void Planner::make_grid(vector<sensor_msgs::PointCloud2> config)
+{
+	ROS_INFO("Imposing a grid.");
+	float grid_resolution = 0.0;
+	for (size_t i = 0; i < config.size(); i++)
+	{
+		pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+		fromROSMsg(config[i], *cloud);
+		tf::Vector3 min, max;
+		minmax3d(min, max, cloud);
+		float x_size = max.getX() - min.getX();
+		float y_size = max.getY() - min.getY();
+		if (std::max(x_size, y_size) > grid_resolution)
+			grid_resolution = std::max(x_size, y_size);
+	}
+	ROS_INFO("Grid resolution = %f", grid_resolution);
+	grid_resolution_ = grid_resolution;
+
+	int n_rows = ceil((BB_MAX.getX() - BB_MIN.getX())/grid_resolution);
+	int n_cols = ceil((BB_MAX.getY() - BB_MIN.getY())/grid_resolution);
+
+	//Display grid in RViz
+	visualization_msgs::Marker marker;
+	marker.header.frame_id = "base_link";
+	marker.header.stamp = ros::Time::now();
+	marker.ns = "grid";
+	marker.id = 0;
+	// Set the marker type.  Initially this is CUBE, and cycles between that and SPHERE, ARROW, and CYLINDER
+	marker.type = visualization_msgs::Marker::LINE_LIST;
+	marker.action = visualization_msgs::Marker::ADD;
+	// Set the pose of the marker.  This is a full 6DOF pose relative to the frame/time specified in the header
+	//marker.pose = pose;
+	// Set the scale of the marker -- 1x1x1 here means 1m on a side
+	marker.scale.x = 0.005;
+	marker.color.r = 0.0;
+	marker.color.g = 1.0;
+	marker.color.b = 1.0;
+	marker.color.a = 1.0;
+	marker.lifetime = ros::Duration(0.0);
+	vector<geometry_msgs::Point> points;
+	points.resize(2*(n_rows+1+n_cols+1));
+	geometry_msgs::Point pt;
+	pt.z = 1.01;
+	for (int r = 0; r < n_rows; r++) {
+		pt.x = BB_MIN.getX() + r*grid_resolution;
+		pt.y = BB_MAX.getY();
+		points[2*r] = pt;
+		pt.y = BB_MIN.getY();
+		points[2*r+1] = pt;
+	}
+	for (int c = 0; c < n_cols; c++) {
+		pt.x = BB_MAX.getX();
+		pt.y = BB_MAX.getY() - c*grid_resolution;
+		points[2*n_rows + 2*c] = pt;
+		pt.x = BB_MIN.getX();
+		points[2*n_rows + 2*c+1] = pt;
+	}
+	marker.points = points;
+	gridPub_.publish(marker);
+}
+
+void Planner::findGridLocations(vector<sensor_msgs::PointCloud2> config)
+{
+	//Find row-col location for each cluster in the grid
+	vector<vector<int> > grid_locations;
+	grid_locations.resize(config.size());
+	for (size_t i = 0; i < config.size(); i++)
+	{
+		grid_locations[i].resize(4);
+		pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+		fromROSMsg(config[i], *cloud);
+		tf::Vector3 min, max;
+		minmax3d(min, max, cloud);
+		//Rows are front to back, columns are left to right
+		grid_locations[i][0] = ceil((min.getX() - BB_MIN.getX())/grid_resolution_);		//min row
+		grid_locations[i][1] = ceil((BB_MAX.getY() - max.getY())/grid_resolution_);		//min col
+		//grid_locations[i][2] = ceil((max.getX() - BB_MIN.getX())/grid_resolution_);		//max row
+		/* Setting max row to min row */
+		grid_locations[i][2] = grid_locations[i][0];
+		grid_locations[i][3] = ceil((BB_MAX.getY() - min.getY())/grid_resolution_);		//max col
+		//grid_locations_.insert(std::pair<int, pair<int, int> >((int)i, make_pair(row, col)));
+		ROS_INFO("Grid location for cluster %zu: %d %d %d %d", i, grid_locations[i][0], grid_locations[i][1],
+				grid_locations[i][2], grid_locations[i][3]);
+	}
+	grid_locations_ = grid_locations;
+}
+
+bool Planner::inFront(pcl::PointCloud<PointT> cloud, int cluster_idx)
+{
+	int min_row = grid_locations_[cluster_idx][0];
+	int min_col = grid_locations_[cluster_idx][1];
+	int max_row = grid_locations_[cluster_idx][2];
+	int max_col = grid_locations_[cluster_idx][3];
+
+	if (min_row == 0 && max_row == 0)
+		return true;
+	else {
+		//Check if this col has any other object in the same col but lesser row
+		for (unsigned int i = 0; i < grid_locations_.size(); i++)
+		{
+			vector<int> temp_vec = grid_locations_[i];
+			if (temp_vec[1] == min_col && temp_vec[0] < min_row)
+				return false;
+			if (temp_vec[1] == max_col && temp_vec[0] < max_row)
+				return false;
+			if (temp_vec[3] == max_col && temp_vec[2] < max_row)
+				return false;
+			if (temp_vec[3] == min_col && temp_vec[2] < min_row)
+				return false;
+		}
+	}
+	//ROS_ERROR("inFront: Should not be here.");
+	ROS_INFO("Cluster %d: Exiting inFront", cluster_idx);
+	return true;
+}
+
+void Planner::findMovable(vector<sensor_msgs::PointCloud2> config,
+		vector<sensor_msgs::PointCloud2>& movable_clusters, vector<int>& movable_idx)
+{
+	//Find which clusters have full frontal visibility
+	for (size_t i = 0; i < config.size(); i++)
+	{
+		pcl::PointCloud<PointT> cloud;
+		fromROSMsg(config[i], cloud);
+
+		//Get bounding box of target cloud
+		//ROS_DEBUG("Finding bounding box of cloud");
+		//object_manipulation_msgs::ClusterBoundingBox bbx;
+		//getClusterBoundingBox(config[i], bbx.pose_stamped, bbx.dimensions);
+
+		if (touchesTable(cloud, tableHeight_) && (cloud.points.size() >= 200)) {
+			//This cluster is in contact with the table
+			ROS_INFO("Cluster %zu touches the table", i);
+			if (inFront(cloud, (int)i))	{
+				ROS_INFO("Cluster %zu is in front and fully visible", i);
+				movable_clusters.push_back(config[i]);
+				movable_idx.push_back((int)i);
+			}
+		}
+	}
+	movablePub_.publish(concatClouds(movable_clusters));
+	ROS_DEBUG("Found %zu movable clusters", movable_clusters.size());
+}
+
+bool Planner::generatePercentageIfRemoved(vector<tf::Pose> object_belief,
+								 vector<sensor_msgs::PointCloud2> movable_clusters,
+								 vector<int> movable_idx,
 								 map<int, double>& percentage)
 {
 	ROS_DEBUG("Generating percentage");
 	pcl::PointCloud<PointT>::Ptr percentage_cloud(new pcl::PointCloud<PointT>);
-	
+
 	//create tabletop representation with one cluster missing at a time
 	tf::Transform identity;
 	identity.setIdentity();
 	//percentage.resize(visible_clusters.size());
 	pcl::PointCloud<PointT> temp_cloud;
-	for (size_t i = 0; i < visible_clusters.size(); i++) {
+	for (size_t i = 0; i < movable_clusters.size(); i++) {
 		ROS_DEBUG("Cluster %zu", i);
 		pcl::PointCloud<PointT>::Ptr concat_cloud(new pcl::PointCloud<PointT>);
 
-		for (size_t j = 0; j < visible_clusters.size(); j++) {
-			fromROSMsg(visible_clusters[j], temp_cloud);
+		for (size_t j = 0; j < movable_clusters.size(); j++) {
+			fromROSMsg(movable_clusters[j], temp_cloud);
 			if (i == 0 && j == 1)
 				*concat_cloud = temp_cloud;
 			else if (i != 0 && j == 0)
@@ -593,109 +724,59 @@ bool Planner::generatePercentage(vector<tf::Pose> object_belief,
 			if (checkHiddenOrVisible(targetCloud2_, concatCloudTTO, *it, identity, true, false))
 				num_remaining++;
 		}
-		
+
 		double this_percentage = (object_belief.size() == 0 ? 1 :
 							 (object_belief.size() - num_remaining)/ (double) object_belief.size());
-		
+
 		ROS_DEBUG("Removing Cluster %zu would reveal %zu of remaining hypotheses that is %f percent",
 				i, object_belief.size() - num_remaining, 100 * this_percentage);
-		
-		percentage[visible_idx[i]] = this_percentage;
+
+		percentage[movable_idx[i]] = this_percentage;
 	}
-	return true;
-}	
-
-void Planner::findGridLocations(vector<sensor_msgs::PointCloud2> config)
-{
-	//Find row-col location for each cluster in the grid
-	vector<vector<int> > grid_locations;
-	grid_locations.resize(config.size());
-	for (size_t i = 0; i < config.size(); i++)
-	{
-		grid_locations[i].resize(4);
-		pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
-		fromROSMsg(config[i], *cloud);
-		tf::Vector3 min, max;
-		minmax3d(min, max, cloud);
-		//Rows are front to back, columns are left to right
-		grid_locations[i][0] = ceil((BB_MAX.getY() - max.getY())/grid_resolution_);		//min row
-		grid_locations[i][0] = (int)(min.getY() - BB_MIN.getY())/grid_resolution_;		//min row
-		grid_locations[i][1] = (int)(min.getX() - BB_MIN.getX())/grid_resolution_;		//min col
-
-		grid_locations[i][3] = (int)(max.getX() - BB_MAX.getX())/grid_resolution_;		//max col
-		//grid_locations_.insert(std::pair<int, pair<int, int> >((int)i, make_pair(row, col)));
-		ROS_INFO("Grid location for cluster %zu: %d %d %d %d", i, grid_locations[i][0], grid_locations[i][1],
-				grid_locations[i][2], grid_locations[i][3]);
-	}
-	grid_locations_ = grid_locations;
-}
-
-bool Planner::inFront(pcl::PointCloud<PointT> cloud, int cluster_idx)
-{
-	int min_row = grid_locations_[cluster_idx][0];
-	int min_col = grid_locations_[cluster_idx][1];
-	int max_row = grid_locations_[cluster_idx][2];
-	int max_col = grid_locations_[cluster_idx][3];
-
-	if (min_row == 0)
-		return true;
-	else {
-		//Check if this col has any other object in the same col but lesser row
-		for (unsigned int i = 0; i < grid_locations_.size(); i++)
-		{
-			vector<int> temp_vec = grid_locations_[i];
-			if (temp_vec[1] == min_col && temp_vec[0] < min_row)
-				return false;
-			if (temp_vec[1] == max_col && temp_vec[0] < max_row)
-				return false;
-			if (temp_vec[3] == max_col && temp_vec[2] < max_row)
-				return false;
-			if (temp_vec[3] == min_col && temp_vec[2] < min_row)
-				return false;
-		}
-	}
-	ROS_ERROR("inFront: Should not be here.");
 	return true;
 }
 
-void Planner::findVisible(vector<sensor_msgs::PointCloud2> config,
-		vector<sensor_msgs::PointCloud2>& visible_clusters, vector<int>& visible_idx)
+double Planner::generatePercentageIfDisplaced(vector<tf::Pose> object_belief,
+								 vector<sensor_msgs::PointCloud2> new_config)
 {
-	//Find which clusters have full frontal visibility
-	for (size_t i = 0; i < config.size(); i++)
-	{
-		pcl::PointCloud<PointT> cloud;
-		fromROSMsg(config[i], cloud);
+	ROS_DEBUG("Generating percentage");
 
-		if (touchesTable(cloud, tableHeight_) && (cloud.points.size() >= 200)) {
-			//This cluster is in contact with the table
-			ROS_INFO("Cluster %zu touches the table", i);
-			if (inFront(cloud, (int)i))	{
-				ROS_INFO("Cluster %zu is in front and fully visible", i);
-				visible_clusters.push_back(config[i]);
-				visible_idx.push_back((int)i);
-			}
-		}
+	//create tabletop representation for the new config
+	tf::Transform identity;
+	identity.setIdentity();
+
+	size_t num_remaining = 0;
+	sensor_msgs::PointCloud2 otherCloud2 = concatClouds(new_config);
+	TableTopObject otherCloudTTO = createTTO(otherCloud2);
+	for (std::vector<tf::Pose>::iterator it = object_belief.begin(); it != object_belief.end(); it++) {
+		if (checkHiddenOrVisible(targetCloud2_, otherCloudTTO, *it, identity, true, false))
+			num_remaining++;
 	}
-	visiblePub_.publish(concatClouds(visible_clusters));
-	ROS_DEBUG("Found %zu visible clusters", visible_clusters.size());
+
+	double this_percentage = (object_belief.size() == 0 ? 1 :
+			(object_belief.size() - num_remaining)/ (double) object_belief.size());
+
+	ROS_DEBUG("This move would reveal %zu of remaining hypotheses that is %f percent",
+			object_belief.size() - num_remaining, 100 * this_percentage);
+
+	return this_percentage;
 }
 
 void Planner::findPossibleMoves(sensor_msgs::PointCloud2& other_cloud,
-		vector<sensor_msgs::PointCloud2> visible_clusters,
-		vector<int> visible_idx,
+		vector<sensor_msgs::PointCloud2> movable_clusters,
+		vector<int> movable_idx,
 		vector<Move>& possible_moves)
 {
 	ROS_DEBUG("Finding possible moves");
 	//Given current configuration and visible objects, find all valid moves of these objects.
 	TableTopObject concatCloudTTO = createTTO(other_cloud);
 
-	for (size_t cluster_idx = 0; cluster_idx < visible_clusters.size(); cluster_idx++) {
+	for (size_t cluster_idx = 0; cluster_idx < movable_clusters.size(); cluster_idx++) {
 	//for (size_t cluster_idx = 0; cluster_idx < 3; cluster_idx++) {
 
 		//Finding source pose of this cluster
 		pcl::PointCloud<PointT>::Ptr clusterCloud(new pcl::PointCloud<PointT>);
-		fromROSMsg(visible_clusters[cluster_idx], *clusterCloud);
+		fromROSMsg(movable_clusters[cluster_idx], *clusterCloud);
 		tf::Vector3 min, max;
 		minmax3d(min, max, clusterCloud);
 		tf::Vector3 centroid(min.x() + (max.x() - min.x())/2.0, min.y() + (max.y() - min.y())/2.0, min.z() + (max.z() - min.z())/2.0);
@@ -706,19 +787,19 @@ void Planner::findPossibleMoves(sensor_msgs::PointCloud2& other_cloud,
 		//Find destination poses
 		vector<tf::Pose> destination_poses;
 		ROS_DEBUG("Finding destination poses for visible cluster %zu", cluster_idx);
-		samplePose(visible_clusters[cluster_idx], concatCloudTTO, destination_poses, false, true);
+		samplePose(movable_clusters[cluster_idx], concatCloudTTO, destination_poses, false, true);
 
 		//Create moves for this object
 		//vector<Move> moves;
 		//Move temp_move(visible_idx[cluster_idx], visible_clusters[cluster_idx], source_pose, destination_poses[0]);
 		//moves.resize(destination_poses.size(), temp_move);
 		ROS_DEBUG("1. size of free destination poses for object %d = %zu",
-				visible_idx[cluster_idx], destination_poses.size());
+				movable_idx[cluster_idx], destination_poses.size());
 
 		//int j = 0;
 		for (std::vector<tf::Pose>::iterator it = destination_poses.begin(); it!=destination_poses.end(); it++)
 		{
-			Move this_move(visible_idx[cluster_idx], visible_clusters[cluster_idx], source_pose, *it);
+			Move this_move(movable_idx[cluster_idx], movable_clusters[cluster_idx], source_pose, *it);
 			//moves[j].destPose = *it;
 			//j++;
 			possible_moves.push_back(this_move);
@@ -767,31 +848,33 @@ void Planner::plan(int horizon,
 {
 	//Config: All clusters, big and small
 	//other_cloud: The whole object cloud with all clusters, big and small
-	//visible_clusters: Clusters that are big enough to be manipulated and that are in contact with the table
+	//visible_clusters: Clusters that are big enough to be manipulated, that are in contact with the table, and in front
 
 	ROS_DEBUG("Plan: horizon %d", horizon);
+
 	//Sample target pose
 	ROS_DEBUG("Sampling target object pose in occluded space");
 	std::vector<tf::Pose> object_posterior_belief;
 	samplePose(targetCloud2_, createTTO(other_cloud), object_posterior_belief, true, false);
 
+	make_grid(config);
 	findGridLocations(config);
 
-	//Find visible clusters
-	ROS_DEBUG("Finding visible clusters");
-	vector<sensor_msgs::PointCloud2> visible_clusters;
-	vector<int> visible_idx;
-	findVisible(config, visible_clusters, visible_idx);
+	//Find movable clusters
+	ROS_DEBUG("Finding movable clusters");
+	vector<sensor_msgs::PointCloud2> movable_clusters;
+	vector<int> movable_idx;
+	findMovable(config, movable_clusters, movable_idx);
 	if (horizon == MAX_HORIZON)
-		ROS_INFO("Horizon %d: Found %zu visible clusters", horizon, visible_clusters.size());
+		ROS_INFO("Horizon %d: Found %zu movable clusters", horizon, movable_clusters.size());
 
 	//Find % revealed by each visible object
-	map<int, double> percentage;
-	generatePercentage(object_posterior_belief, visible_clusters, visible_idx, percentage);
+	//map<int, double> percentage;
+	//generatePercentageIfRemoved(object_posterior_belief, movable_clusters, movable_idx, percentage);
 
 	//Find possible moves
 	vector<Move> possible_moves;
-	findPossibleMoves(other_cloud, visible_clusters, visible_idx, possible_moves);
+	findPossibleMoves(other_cloud, movable_clusters, movable_idx, possible_moves);
 	if (horizon == MAX_HORIZON)
 		ROS_INFO("Horizon %d: Found %zu possible moves", horizon, possible_moves.size());
 
@@ -822,7 +905,8 @@ void Planner::plan(int horizon,
 		pubCloud("new_simulated_config", new_config_cloud, fixed_frame_);
 		
 		//Find percentage revealed by this move
-		double this_percentage_revealed = percentage[this_move.cluster_idx];
+		double this_percentage_revealed = generatePercentageIfDisplaced(object_posterior_belief, new_config);
+		//double this_percentage_revealed = percentage[this_move.cluster_idx];
 		percentage_revealed_so_far += this_percentage_revealed;	// + percentage_revealed_so_far;
 		
 		if (horizon > 1) {
@@ -871,6 +955,23 @@ void Planner::execute_plan()
 	}
 	new_data_wanted_ = true;
 	//return true;
+}
+
+void Planner::getClusterBoundingBox(const sensor_msgs::PointCloud2 &cluster,
+		geometry_msgs::PoseStamped &pose_stamped,
+		geometry_msgs::Vector3 &dimensions) {
+	object_manipulation_msgs::FindClusterBoundingBox2 srv;
+	srv.request.cluster = cluster;
+	if (!bbx_client_.call(srv.request, srv.response)) {
+		ROS_ERROR("Failed to call cluster bounding box client");
+		//throw CollisionMapException("Failed to call cluster bounding box client");
+	}
+	pose_stamped = srv.response.pose;
+	dimensions = srv.response.box_dims;
+	if (dimensions.x == 0.0 && dimensions.y == 0.0 && dimensions.z == 0.0) {
+		ROS_ERROR("Cluster bounding box client returned an error (0.0 bounding box)");
+		//throw CollisionMapException("Bounding box computation failed");
+	}
 }
 
 int main (int argc, char** argv)

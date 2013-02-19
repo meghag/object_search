@@ -50,19 +50,19 @@ std::string cloud_topic = "/head_mount_kinect/depth_registered/points";
 using namespace std;
 using namespace pcl;
 
-tf::Vector3 BB_MIN(0.4,-0.6,0.9);
-tf::Vector3 BB_MAX(1.5,0.6,1.3);
-
 class ReadData
 {
 public:
-  ReadData(ros::NodeHandle & n): n_(n), tf_(), target_frame_("base_link"), new_data_wanted_(true)
+  ReadData(ros::NodeHandle & n, char* bb_min, char* bb_max): n_(n), tf_(), target_frame_("base_link"), new_data_wanted_(true)
   {
     input_pub_ = n_.advertise<sensor_msgs::PointCloud2>("input_cloud",1);
     planar_pub_ = n_.advertise<sensor_msgs::PointCloud2>("planar_cloud",1);
     object_pub_ = n_.advertise<sensor_msgs::PointCloud2>("object_cloud_from_cam",1);
     planRequestPub_ = n_.advertise<tum_os::PlanRequest>("plan_request",1);
     newpcdServer_ = n_.advertiseService("get_new_pcd", &ReadData::getNewDataCallback, this);
+
+    BB_MIN = tf::Vector3(0.3,-0.6,atof(bb_min));
+    BB_MAX = tf::Vector3(1.5,0.6,atof(bb_max));
 
     pcd_sub_.subscribe(n_, cloud_topic, 1);
     tf_filter_ = new tf::MessageFilter<sensor_msgs::PointCloud2>(pcd_sub_, tf_, target_frame_, 10);
@@ -81,6 +81,8 @@ private:
   ros::Publisher planRequestPub_;
   ros::ServiceServer newpcdServer_;
   bool new_data_wanted_;
+  tf::Vector3 BB_MIN;	//(0.4,-0.6,0.9);
+  tf::Vector3 BB_MAX;	//(1.5,0.6,1.3);
 
   //  Callback to register with tf::MessageFilter to be called when transforms are available
   void msgCallback(const boost::shared_ptr<const sensor_msgs::PointCloud2>& pcd2)
@@ -157,12 +159,12 @@ private:
       plan_request.object_cloud = *filteredObjectCloud2;
       plan_request.table_height = max.z()+0.01;
       plan_request.bb_min.resize(3);
-      plan_request.bb_min[0] = min.x();
-      plan_request.bb_min[1] = min.y()+0.05;			//0.1; temp hack to not use left arm
+      plan_request.bb_min[0] = min.x()+0.1;
+      plan_request.bb_min[1] = min.y()+0.1;			//0.1; temp hack to not use left arm
       plan_request.bb_min[2] = max.z();
       plan_request.bb_max.resize(3);
-      plan_request.bb_max[0] = max.x()-0.05;
-      plan_request.bb_max[1] = max.y()-0.05;
+      plan_request.bb_max[0] = max.x()-0.1;
+      plan_request.bb_max[1] = max.y()-0.1;
       plan_request.bb_max[2] = BB_MAX.z();
       planRequestPub_.publish(plan_request);
       ROS_INFO("bb_min: %f, %f, %f     bb_max: %f, %f, %f", min.x(), min.y(), max.z(),
@@ -184,8 +186,24 @@ private:
 
 int main(int argc, char ** argv)
 {
-  ros::init(argc, argv, "read_data"); //Init ROS
-  ros::NodeHandle n;
-  ReadData cd(n); //Construct class
-  ros::spin(); // Run until interrupted
+	ros::init(argc, argv, "read_data"); //Init ROS
+
+	char* bb_min, *bb_max;
+	/*if (argc == 1) {
+		bb_min = "1.0";
+		bb_max = "1.3";
+	} else {*/
+		for (int i = 1; i < argc; i++) {
+			if (i + 1 != argc) {// Check that we haven't finished parsing already
+				if (string(argv[i]) == "-bbmin")
+					bb_min = argv[i + 1];
+				else if (string(argv[i]) == "-bbmax")
+					bb_max = argv[i + 1];
+			}
+		}
+	//}
+
+	ros::NodeHandle n;
+	ReadData cd(n, bb_min, bb_max); //Construct class
+	ros::spin(); // Run until interrupted
 };

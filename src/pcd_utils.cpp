@@ -225,6 +225,7 @@ sensor_msgs::PointCloud2 concatClouds(vector<sensor_msgs::PointCloud2>& clouds)
 		*concat_cloud += temp_cloud;
 	}
 	toROSMsg(*concat_cloud, concat_cloud2);
+	concat_cloud2.header.frame_id = "base_link";
 	return concat_cloud2;
 }
 
