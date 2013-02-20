@@ -45,7 +45,7 @@ extern "C" {
 #include "pcd_utils.h"
 #include "TableTopObject.h"
 //#include <tum_os/Clusters.h>
-#include <tum_os/PlanRequest.h>
+#include <tum_os/PlanService.h>
 #include <tum_os/Execute_Plan.h>
 #include <tum_os/Get_New_PCD.h>
 
@@ -95,7 +95,8 @@ public:
 
 private:
 	//Functions
-	void planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_request);
+	//void planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_request);
+	bool planRequestCallback(tum_os::PlanService::Request &plan_request, tum_os::PlanService::Response &plan_response);
 	void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses);
 	void pubCloud(const std::string &topic_name, const pcl::PointCloud<PointT>::Ptr &cloud, std::string frame_id);
 	tf::Stamped<tf::Pose> getPose(const std::string target_frame, const std::string lookup_frame, ros::Time tm);
@@ -105,6 +106,7 @@ private:
 	void findGridLocations(vector<sensor_msgs::PointCloud2> config);
 	bool inFront(pcl::PointCloud<PointT> cloud, int cluster_idx);
 	void make_grid(vector<sensor_msgs::PointCloud2> config);
+	void display_grid();
 
 	void samplePose(sensor_msgs::PointCloud2 target_cloud2,
 					TableTopObject otherCloudTTO,
@@ -142,6 +144,14 @@ private:
 			vector<Move>& best_next_action_sequence,
 			double& total_percentage_revealed_so_far);
 
+	/*
+	void random_plan(int horizon,
+			vector<sensor_msgs::PointCloud2> config,
+			sensor_msgs::PointCloud2 other_cloud,
+			vector<Move>& action_sequence_so_far,
+			double& total_percentage_revealed_so_far);
+	*/
+
 	void simulateMove(vector<sensor_msgs::PointCloud2> config,
 			Move move, vector<sensor_msgs::PointCloud2>& new_config);
 
@@ -153,7 +163,8 @@ private:
 
 	//Publishers, Subscribers, Service servers & clients
 	ros::NodeHandle n_;
-	ros::Subscriber planRequestSub_;
+	//ros::Subscriber planRequestSub_;
+	ros::ServiceServer planRequestServer_;
 	ros::Publisher objectCloudPub_;
 	ros::Publisher gridPub_;
 	ros::Publisher clustersPub_;

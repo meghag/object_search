@@ -30,7 +30,7 @@ Assembled\ Laser\ Scan.Topic=assembled_laser_cloud
 Background\ ColorB=0.796078
 Background\ ColorG=0.796078
 Background\ ColorR=0.796078
-Camera\ Config=0.419796 3.1962 1.20614 0.934207 -0.143638 0.861824
+Camera\ Config=0.109797 3.79618 1.06497 0.832502 0.0312465 0.856401
 Camera\ Type=rviz::OrbitViewController
 Clusters..AxisColorAutocompute\ Value\ Bounds=1
 Clusters..AxisColorAxis=2
@@ -63,12 +63,12 @@ Clusters.Style=0
 Clusters.Topic=one_cluster
 Current\ Sim\ config..AxisColorAutocompute\ Value\ Bounds=1
 Current\ Sim\ config..AxisColorAxis=2
-Current\ Sim\ config..AxisColorMax\ Value=0.938012
-Current\ Sim\ config..AxisColorMin\ Value=0.688754
+Current\ Sim\ config..AxisColorMax\ Value=1.0497
+Current\ Sim\ config..AxisColorMin\ Value=0.912219
 Current\ Sim\ config..AxisColorUse\ Fixed\ Frame=1
-Current\ Sim\ config..FlatColorColorB=1
-Current\ Sim\ config..FlatColorColorG=1
-Current\ Sim\ config..FlatColorColorR=1
+Current\ Sim\ config..FlatColorColorB=0.498039
+Current\ Sim\ config..FlatColorColorG=0
+Current\ Sim\ config..FlatColorColorR=0.333333
 Current\ Sim\ config..IntensityAutocompute\ Intensity\ Bounds=1
 Current\ Sim\ config..IntensityChannel\ Name=intensity
 Current\ Sim\ config..IntensityMax\ ColorB=1
@@ -82,7 +82,7 @@ Current\ Sim\ config..IntensityMin\ Intensity=0
 Current\ Sim\ config..IntensityUse\ full\ RGB\ spectrum=0
 Current\ Sim\ config.Alpha=1
 Current\ Sim\ config.Billboard\ Size=0.01
-Current\ Sim\ config.Color\ Transformer=RGB8
+Current\ Sim\ config.Color\ Transformer=FlatColor
 Current\ Sim\ config.Decay\ Time=0
 Current\ Sim\ config.Enabled=0
 Current\ Sim\ config.Position\ Transformer=XYZ
@@ -97,7 +97,7 @@ Dest\ Pose.Shape=1
 Dest\ Pose.Topic=dest_pose
 Fixed\ Frame=/base_link
 Grid.Enabled=1
-Grid.Marker\ Topic=grid
+Grid.Marker\ Topic=/grid
 Grid.Queue\ Size=100
 Kinect..AxisColorAutocompute\ Value\ Bounds=1
 Kinect..AxisColorAxis=2
@@ -120,9 +120,9 @@ Kinect..IntensityMin\ Intensity=0
 Kinect..IntensityUse\ full\ RGB\ spectrum=0
 Kinect.Alpha=1
 Kinect.Billboard\ Size=0.01
-Kinect.Color\ Transformer=RGB8
+Kinect.Color\ Transformer=Intensity
 Kinect.Decay\ Time=0
-Kinect.Enabled=1
+Kinect.Enabled=0
 Kinect.Position\ Transformer=XYZ
 Kinect.Queue\ Size=10
 Kinect.Selectable=1
@@ -141,7 +141,7 @@ LaserScan..IntensityChannel\ Name=intensity
 LaserScan..IntensityMax\ ColorB=1
 LaserScan..IntensityMax\ ColorG=1
 LaserScan..IntensityMax\ ColorR=1
-LaserScan..IntensityMax\ Intensity=101
+LaserScan..IntensityMax\ Intensity=583
 LaserScan..IntensityMin\ ColorB=0
 LaserScan..IntensityMin\ ColorG=0
 LaserScan..IntensityMin\ ColorR=0
@@ -159,8 +159,8 @@ LaserScan.Style=0
 LaserScan.Topic=/tilt_scan
 Movable\ clusters..AxisColorAutocompute\ Value\ Bounds=1
 Movable\ clusters..AxisColorAxis=2
-Movable\ clusters..AxisColorMax\ Value=1.08604
-Movable\ clusters..AxisColorMin\ Value=0.989729
+Movable\ clusters..AxisColorMax\ Value=1.0497
+Movable\ clusters..AxisColorMin\ Value=0.916781
 Movable\ clusters..AxisColorUse\ Fixed\ Frame=1
 Movable\ clusters..FlatColorColorB=1
 Movable\ clusters..FlatColorColorG=1
@@ -180,7 +180,7 @@ Movable\ clusters.Alpha=1
 Movable\ clusters.Billboard\ Size=0.01
 Movable\ clusters.Color\ Transformer=AxisColor
 Movable\ clusters.Decay\ Time=0
-Movable\ clusters.Enabled=1
+Movable\ clusters.Enabled=0
 Movable\ clusters.Position\ Transformer=XYZ
 Movable\ clusters.Queue\ Size=10
 Movable\ clusters.Selectable=1
@@ -220,12 +220,12 @@ New\ Pose.Style=0
 New\ Pose.Topic=new_pose
 New\ Sim\ Config..AxisColorAutocompute\ Value\ Bounds=1
 New\ Sim\ Config..AxisColorAxis=2
-New\ Sim\ Config..AxisColorMax\ Value=0.792603
-New\ Sim\ Config..AxisColorMin\ Value=0.636839
+New\ Sim\ Config..AxisColorMax\ Value=2.04043
+New\ Sim\ Config..AxisColorMin\ Value=0.912219
 New\ Sim\ Config..AxisColorUse\ Fixed\ Frame=1
-New\ Sim\ Config..FlatColorColorB=1
+New\ Sim\ Config..FlatColorColorB=0
 New\ Sim\ Config..FlatColorColorG=1
-New\ Sim\ Config..FlatColorColorR=1
+New\ Sim\ Config..FlatColorColorR=0.333333
 New\ Sim\ Config..IntensityAutocompute\ Intensity\ Bounds=1
 New\ Sim\ Config..IntensityChannel\ Name=intensity
 New\ Sim\ Config..IntensityMax\ ColorB=1
@@ -239,7 +239,7 @@ New\ Sim\ Config..IntensityMin\ Intensity=0
 New\ Sim\ Config..IntensityUse\ full\ RGB\ spectrum=0
 New\ Sim\ Config.Alpha=1
 New\ Sim\ Config.Billboard\ Size=0.01
-New\ Sim\ Config.Color\ Transformer=AxisColor
+New\ Sim\ Config.Color\ Transformer=FlatColor
 New\ Sim\ Config.Decay\ Time=0
 New\ Sim\ Config.Enabled=0
 New\ Sim\ Config.Position\ Transformer=XYZ
@@ -255,8 +255,8 @@ Object\ Belief.Enabled=0
 Object\ Belief.Topic=object_belief
 Object\ Cloud\ from\ cam..AxisColorAutocompute\ Value\ Bounds=1
 Object\ Cloud\ from\ cam..AxisColorAxis=2
-Object\ Cloud\ from\ cam..AxisColorMax\ Value=1.18178
-Object\ Cloud\ from\ cam..AxisColorMin\ Value=0.966191
+Object\ Cloud\ from\ cam..AxisColorMax\ Value=1.04966
+Object\ Cloud\ from\ cam..AxisColorMin\ Value=0.91259
 Object\ Cloud\ from\ cam..AxisColorUse\ Fixed\ Frame=1
 Object\ Cloud\ from\ cam..FlatColorColorB=1
 Object\ Cloud\ from\ cam..FlatColorColorG=1
@@ -276,7 +276,7 @@ Object\ Cloud\ from\ cam.Alpha=1
 Object\ Cloud\ from\ cam.Billboard\ Size=0.01
 Object\ Cloud\ from\ cam.Color\ Transformer=AxisColor
 Object\ Cloud\ from\ cam.Decay\ Time=0
-Object\ Cloud\ from\ cam.Enabled=1
+Object\ Cloud\ from\ cam.Enabled=0
 Object\ Cloud\ from\ cam.Position\ Transformer=XYZ
 Object\ Cloud\ from\ cam.Queue\ Size=10
 Object\ Cloud\ from\ cam.Selectable=1
@@ -284,12 +284,12 @@ Object\ Cloud\ from\ cam.Style=0
 Object\ Cloud\ from\ cam.Topic=object_cloud_from_cam
 Object\ Cloud..AxisColorAutocompute\ Value\ Bounds=1
 Object\ Cloud..AxisColorAxis=2
-Object\ Cloud..AxisColorMax\ Value=1.10472
-Object\ Cloud..AxisColorMin\ Value=0.983887
+Object\ Cloud..AxisColorMax\ Value=1.04996
+Object\ Cloud..AxisColorMin\ Value=0.913698
 Object\ Cloud..AxisColorUse\ Fixed\ Frame=1
-Object\ Cloud..FlatColorColorB=1
-Object\ Cloud..FlatColorColorG=1
-Object\ Cloud..FlatColorColorR=1
+Object\ Cloud..FlatColorColorB=0
+Object\ Cloud..FlatColorColorG=0.333333
+Object\ Cloud..FlatColorColorR=0.666667
 Object\ Cloud..IntensityAutocompute\ Intensity\ Bounds=1
 Object\ Cloud..IntensityChannel\ Name=intensity
 Object\ Cloud..IntensityMax\ ColorB=1
@@ -303,9 +303,9 @@ Object\ Cloud..IntensityMin\ Intensity=0
 Object\ Cloud..IntensityUse\ full\ RGB\ spectrum=0
 Object\ Cloud.Alpha=1
 Object\ Cloud.Billboard\ Size=0.01
-Object\ Cloud.Color\ Transformer=AxisColor
+Object\ Cloud.Color\ Transformer=FlatColor
 Object\ Cloud.Decay\ Time=0
-Object\ Cloud.Enabled=0
+Object\ Cloud.Enabled=1
 Object\ Cloud.Position\ Transformer=XYZ
 Object\ Cloud.Queue\ Size=10
 Object\ Cloud.Selectable=1
@@ -411,9 +411,9 @@ Planner\ Source\ Pose.Topic=/planner_source_pose
 Planning\ Scene\ Markers.Enabled=0
 Planning\ Scene\ Markers.Marker\ Topic=/planning_scene_markers
 Planning\ Scene\ Markers.Queue\ Size=100
-Property\ Grid\ Splitter=338,0
-Property\ Grid\ State=;splitterratio=0.742925
-QMainWindow=000000ff00000000fd0000000300000000000001ba000001a4fc0200000001fb000000100044006900730070006c0061007900730100000034000001a4000000fa00ffffff000000010000012e00000199fc0200000003fb0000001e0054006f006f006c002000500072006f007000650072007400690065007300000000340000006d0000006d00fffffffb0000000a0056006900650077007300000000340000010f000000c500fffffffb0000001200530065006c0065006300740069006f006e0000000034000001990000006d00ffffff00000003000004f70000003efc0100000001fb0000000800540069006d00650100000000000004f70000024500ffffff00000337000001a400000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+Property\ Grid\ Splitter=421,0
+Property\ Grid\ State=expanded=Planning Scene Markers.Enabled,MoveRightArm markers.Enabled,Source Pose.Enabled,Source Pose.Shape Properties,Dest Pose.Enabled,Dest Pose.Shape Properties,LaserScan.Enabled,Assembled Laser Scan.Enabled;splitterratio=0.808962
+QMainWindow=000000ff00000000fd0000000300000000000001ba000001f7fc0200000001fb000000100044006900730070006c0061007900730100000034000001f7000000fa00ffffff00000001000001bf000001f7fc0200000003fb0000001e0054006f006f006c002000500072006f007000650072007400690065007300000000340000006d0000006d00fffffffb0000000a0056006900650077007300000000340000010f000000c500fffffffb0000001200530065006c0065006300740069006f006e0100000034000001f70000006d00ffffff00000003000007100000003efc0100000001fb0000000800540069006d00650100000000000007100000024500ffffff0000038b000001f700000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
 Robot\ Model.Alpha=1
 Robot\ Model.Collision\ Enabled=0
 Robot\ Model.Enabled=0
@@ -487,7 +487,7 @@ Target\ Object\ Cloud.Alpha=1
 Target\ Object\ Cloud.Billboard\ Size=0.01
 Target\ Object\ Cloud.Color\ Transformer=AxisColor
 Target\ Object\ Cloud.Decay\ Time=0
-Target\ Object\ Cloud.Enabled=1
+Target\ Object\ Cloud.Enabled=0
 Target\ Object\ Cloud.Position\ Transformer=XYZ
 Target\ Object\ Cloud.Queue\ Size=10
 Target\ Object\ Cloud.Selectable=1
@@ -528,7 +528,7 @@ Valid\ Pose\ Samples.Arrow\ Length=0.08
 Valid\ Pose\ Samples.ColorB=0
 Valid\ Pose\ Samples.ColorG=0.666667
 Valid\ Pose\ Samples.ColorR=0
-Valid\ Pose\ Samples.Enabled=1
+Valid\ Pose\ Samples.Enabled=0
 Valid\ Pose\ Samples.Topic=valid_pose_samples
 Visualization\ Marker.Enabled=0
 Visualization\ Marker.Marker\ Topic=visualization_marker
@@ -540,56 +540,56 @@ Name=Robot Model
 ClassName=rviz::PointCloud2Display
 Name=Kinect
 [Display10]
-ClassName=rviz::PoseArrayDisplay
-Name=Object Belief
+ClassName=rviz::PoseDisplay
+Name=Planner Source Pose
 [Display11]
-ClassName=rviz::PoseArrayDisplay
-Name=Valid Pose Samples
+ClassName=rviz::PoseDisplay
+Name=Planner Dest Pose
 [Display12]
 ClassName=rviz::PointCloud2Display
-Name=Percentage
+Name=Other Cloud TTO
 [Display13]
+ClassName=rviz::PoseArrayDisplay
+Name=Object Belief
+[Display14]
+ClassName=rviz::PoseArrayDisplay
+Name=Valid Pose Samples
+[Display15]
+ClassName=rviz::PointCloud2Display
+Name=Percentage
+[Display16]
 ClassName=rviz::PointCloud2Display
 Name=New Pose
-[Display14]
-ClassName=rviz::PointCloud2Display
-Name=Movable clusters
-[Display15]
+[Display17]
 ClassName=rviz::TFDisplay
 Name=TF
-[Display16]
+[Display18]
 ClassName=rviz::PointCloudDisplay
 Name=Target
-[Display17]
-ClassName=rviz::PointCloud2Display
-Name=Current Sim config
-[Display18]
-ClassName=rviz::PointCloud2Display
-Name=New Sim Config
 [Display19]
 ClassName=rviz::PointCloud2Display
-Name=Table
+Name=Current Sim config
 [Display2]
 ClassName=rviz::MarkerDisplay
 Name=Visualization Marker
 [Display20]
+ClassName=rviz::PointCloud2Display
+Name=New Sim Config
+[Display21]
+ClassName=rviz::PointCloud2Display
+Name=Table
+[Display22]
 ClassName=rviz::MarkerDisplay
 Name=Planning Scene Markers
-[Display21]
+[Display23]
 ClassName=rviz::MarkerArrayDisplay
 Name=MoveRightArm markers
-[Display22]
-ClassName=rviz::PoseDisplay
-Name=Source Pose
-[Display23]
-ClassName=rviz::PoseDisplay
-Name=Dest Pose
 [Display24]
 ClassName=rviz::PoseDisplay
-Name=Planner Source Pose
+Name=Source Pose
 [Display25]
 ClassName=rviz::PoseDisplay
-Name=Planner Dest Pose
+Name=Dest Pose
 [Display26]
 ClassName=rviz::LaserScanDisplay
 Name=LaserScan
@@ -616,9 +616,9 @@ ClassName=rviz::PointCloud2Display
 Name=Clusters
 [Display9]
 ClassName=rviz::PointCloud2Display
-Name=Other Cloud TTO
+Name=Movable clusters
 [Window]
-Height=540
-Width=1271
-X=101
+Height=623
+Width=1808
+X=94
 Y=-143

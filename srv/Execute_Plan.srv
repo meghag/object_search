@@ -10,8 +10,7 @@ float64 table_height
 #tf/LinearMath/Pose source_pose2
 #tf/LinearMath/Pose destPose
 
-#Action to be taken: 1 = Spread, 2 = Tumble
+#Action to be taken
 #int32 action
-#geometry_msgs/Point[] table_extent
 ---
 bool result
