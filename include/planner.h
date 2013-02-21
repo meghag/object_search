@@ -97,6 +97,7 @@ private:
 	//Functions
 	//void planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_request);
 	bool planRequestCallback(tum_os::PlanService::Request &plan_request, tum_os::PlanService::Response &plan_response);
+	void call_plan(sensor_msgs::PointCloud2 objectCloud2);
 	void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses);
 	void pubCloud(const std::string &topic_name, const pcl::PointCloud<PointT>::Ptr &cloud, std::string frame_id);
 	tf::Stamped<tf::Pose> getPose(const std::string target_frame, const std::string lookup_frame, ros::Time tm);

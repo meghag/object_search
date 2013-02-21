@@ -215,8 +215,14 @@ void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<PointT>::Ptr &
 
 sensor_msgs::PointCloud2 concatClouds(vector<sensor_msgs::PointCloud2>& clouds)
 {
-	pcl::PointCloud<PointT>::Ptr concat_cloud(new pcl::PointCloud<PointT>);
 	sensor_msgs::PointCloud2 concat_cloud2;
+	if (clouds.size() == 0){
+		ROS_ERROR("Empty vector sent to be concatenated.");
+		return concat_cloud2;
+	} else if (clouds.size() == 1)
+		return clouds[0];
+
+	pcl::PointCloud<PointT>::Ptr concat_cloud(new pcl::PointCloud<PointT>);
 	fromROSMsg(clouds[0], *concat_cloud);
 	for (size_t i = 1; i < clouds.size(); i++)
 	{
@@ -276,18 +282,52 @@ bool touchesTable(pcl::PointCloud<PointT> cloud, double table_height)
 	//for (PointCloud<PointT>::iterator it = cloud.points.begin(); it != cloud.points.end(); it++)
 	for(vector<PointT, Eigen::aligned_allocator<PointT> >::iterator it = cloud.points.begin(); it != cloud.points.end(); ++it)
 	{
-		if (abs(it->z - table_height) < 0.01)
+		if (abs(it->z - table_height) < 0.02)
 			//Close enough to table
 			count++;
 	}
 
-	if (count > 10)	//Should be a % of cloud size instead of fixed at 50
+	if (count > 1)	//Should be a % of cloud size instead of fixed at 50
 	{
-		//ROS_DEBUG("Yes, it does!");
+		ROS_DEBUG("Yes, it does!");
 		return true;
 	}
 	else {
-		//ROS_DEBUG("No, it doesn't!");
+		ROS_DEBUG("No, it doesn't!");
 		return false;
 	}
+}
+
+bool incontact(sensor_msgs::PointCloud2 cloud2_1, sensor_msgs::PointCloud2 cloud2_2,
+		float cluster_tolerance, int min_cluster_size, int max_cluster_size)
+{
+	pcl::PointCloud<PointT> cloud1, cloud2;
+	fromROSMsg(cloud2_1, cloud1);
+	fromROSMsg(cloud2_2, cloud2);
+
+	//Concatenate the 2 clouds
+	pcl::PointCloud<PointT> cloud_concat = cloud1;
+	cloud_concat += cloud2;
+	pcl::PointCloud<PointT>::Ptr concat(new PointCloud<PointT>);
+	*concat = cloud_concat;
+
+	//Do Euclidean clustering and find number of clusters
+	//Electric: pcl::KdTree<PointXYZRGB>::Ptr tree (new pcl::KdTreeFLANN<PointXYZRGB>);
+	// Fuerte:
+	pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
+	tree->setInputCloud (concat);
+
+	std::vector<pcl::PointIndices> cluster_indices;
+	pcl::EuclideanClusterExtraction<PointT> ec;
+	ec.setClusterTolerance (cluster_tolerance);
+	ec.setMinClusterSize (min_cluster_size);
+	ec.setMaxClusterSize (max_cluster_size);
+	ec.setSearchMethod (tree);
+	ec.setInputCloud(concat);
+	ec.extract (cluster_indices);
+	if (cluster_indices.size() == 1)
+		//The two clusters are closer than 4 cm
+		return true;
+	else
+		return false;
 }

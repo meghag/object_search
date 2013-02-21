@@ -334,18 +334,74 @@ bool Planner::planRequestCallback(tum_os::PlanService::Request &plan_request,
 		gridPub_.publish(marker);
 	//}
 
-	//TODO: Fill in the hollows of cluster point clouds
-	//Euclidean segmentation
 	cluster(objectCloud2_, 0.02, 50, 10000, clustersDetected_);
 	//cluster(objectCloud2_, 0.02, 300, 1000, clustersDetected_);
+
+	//Filling bounding boxes of detected clusters
+	pcl::PointCloud<PointT>::Ptr clusterCloud(new pcl::PointCloud<PointT>);
+	for (unsigned int c = 0; c < clustersDetected_.size(); c++) {
+		fromROSMsg(clustersDetected_[c], *clusterCloud);
+		tf::Vector3 min, max;
+		minmax3d(min, max, clusterCloud);
+
+		//Extend BBX to table
+		min.setZ(tableHeight_);
+
+		//Get bounding box of target cloud
+		ROS_INFO("Finding bounding box of cloud");
+		object_manipulation_msgs::ClusterBoundingBox bbx;
+		//target_cloud2.header.frame_id = "base_link";
+		//getClusterBoundingBox(target_cloud2, bbx.pose_stamped, bbx.dimensions);
+		bbx.pose_stamped.pose.position = find_centroid(*clusterCloud);
+		bbx.dimensions.x = max.getX() - min.getX() + 0.05;
+		bbx.dimensions.y = max.getY() - min.getY();
+		bbx.dimensions.z = max.getZ() - min.getZ();
+		ROS_INFO("bbx position: %f %f %f, dimensions: %f %f %f", bbx.pose_stamped.pose.position.x, bbx.pose_stamped.pose.position.y, bbx.pose_stamped.pose.position.z,
+				bbx.dimensions.x, bbx.dimensions.y, bbx.dimensions.z);
+
+		//fill the bbx with points and generate a point cloud
+		pcl::PointCloud<PointT>::Ptr object_cloud (new pcl::PointCloud<PointT>);
+		ROS_DEBUG("Filling the point cloud for object to be sampled");
+
+		// Fill in the cloud data
+		object_cloud->width  = 200;
+		object_cloud->height = 1;
+		object_cloud->points.resize (object_cloud->width * object_cloud->height);
+		for (size_t i = 0; i < object_cloud->points.size (); ++i)
+		{
+			object_cloud->points[i].x = min.getX() + bbx.dimensions.x * rand () / (RAND_MAX + 1.0f);
+			object_cloud->points[i].y = min.getY() + bbx.dimensions.y * rand () / (RAND_MAX + 1.0f);
+			object_cloud->points[i].z = min.getZ() + bbx.dimensions.z * rand () / (RAND_MAX + 1.0f);
+		}
+
+		sensor_msgs::PointCloud2 objectCloud2;
+		toROSMsg(*object_cloud, objectCloud2);
+		objectCloud2.header.frame_id = "base_link";
+		clustersDetected_[c] = objectCloud2;
+		pubCloud("filled_cluster_bbx", object_cloud, fixed_frame_);
+
+		//breakpoint();
+	}
+
+	call_plan(objectCloud2_);
+
+	plan_response.result = true;
+	new_data_wanted_ = true;
+	return true;
+}
+
+void Planner::call_plan(sensor_msgs::PointCloud2 objectCloud2)
+{
+	objectCloudPub_.publish(objectCloud2);
 
 	ROS_INFO("Found %zu clusters", clustersDetected_.size());
 	if (clustersDetected_.size() == 0) {
 		ROS_ERROR("EXITING.");
 		//ros::shutdown();
 	}
+
 	/*
-	 //Detecting target object based on color
+	//Detecting target object based on color
 	for (size_t i = 0; i < clustersDetected_.size(); i++)
 	{
 		clustersDetected_[i].header.frame_id = "base_link";
@@ -358,7 +414,7 @@ bool Planner::planRequestCallback(tum_os::PlanService::Request &plan_request,
 		}
 		//breakpoint();
 	}
-	*/
+	 */
 
 	vector<Move> best_next_action_sequence;
 	double total_percentage_revealed_so_far = 0.0;
@@ -377,6 +433,8 @@ bool Planner::planRequestCallback(tum_os::PlanService::Request &plan_request,
 	source_pose.header.stamp = ros::Time::now();
 	dest_pose.header.frame_id = "base_link";
 	dest_pose.header.stamp = ros::Time::now();
+	vector<sensor_msgs::PointCloud2> current_config = clustersDetected_;
+	vector<sensor_msgs::PointCloud2> new_config;
 	for (size_t i = 0; i < best_next_action_sequence.size(); i++)
 	{
 		ROS_INFO("cluster idx = %d, \n source location = %f %f %f, \n dest location = %f %f %f", best_next_action_sequence[i].cluster_idx,
@@ -389,10 +447,23 @@ bool Planner::planRequestCallback(tum_os::PlanService::Request &plan_request,
 		source_pose_pub_.publish(source_pose);
 		dest_pose_pub_.publish(dest_pose);
 		breakpoint();
+
+		//Executing plan in simulation
+		simulateMove(current_config, best_next_action_sequence[i], new_config);
+		pcl::PointCloud<PointT>::Ptr new_config_cloud(new pcl::PointCloud<PointT>);
+		fromROSMsg(concatClouds(new_config), *new_config_cloud);
+		//ROS_DEBUG("Publishing new simulated config on topic new_simulated_config");
+		pubCloud("new_simulated_config", new_config_cloud, fixed_frame_);
+		current_config = new_config;
+		new_config.clear();
+		breakpoint();
 	}
 
-	plan_response.result = true;
-	new_data_wanted_ = true;
+	sensor_msgs::PointCloud2 newObjectCloud2 = concatClouds(current_config);
+	newObjectCloud2.header.frame_id = fixed_frame_;
+	//Euclidean segmentation
+	cluster(newObjectCloud2, 0.02, 50, 10000, clustersDetected_);
+	call_plan(newObjectCloud2);
 
 	//Execute plan
 	//execute_plan();
@@ -412,8 +483,8 @@ bool Planner::planRequestCallback(tum_os::PlanService::Request &plan_request,
 		}
 		new_data_wanted_ = false;
 	}
-	*/
-	return true;
+	 */
+	//return true;
 }
 
 void Planner::samplePose(sensor_msgs::PointCloud2 target_cloud2, 
@@ -452,12 +523,51 @@ void Planner::samplePose(sensor_msgs::PointCloud2 target_cloud2,
     minmax3d(min, max, targetCloud);
     float object_height = max.getZ() - min.getZ();
     //ROS_DEBUG("Cloud z midpoint = %f", min.z() + (max.z() - min.z())/2.0);
+/*
+    if (check_visible) {
+    //pubCloud("sampled_object", targetCloud, fixed_frame_);
+    //breakpoint();
+
+    //Get bounding box of target cloud
+    ROS_INFO("Finding bounding box of cloud");
+    object_manipulation_msgs::ClusterBoundingBox bbx;
+    target_cloud2.header.frame_id = "base_link";
+    //getClusterBoundingBox(target_cloud2, bbx.pose_stamped, bbx.dimensions);
+    bbx.pose_stamped.pose.position = find_centroid(*targetCloud);
+    bbx.dimensions.x = max.getX() - min.getX() + 0.05;
+    bbx.dimensions.y = max.getY() - min.getY();
+    bbx.dimensions.z = max.getZ() - min.getZ();
+    ROS_INFO("bbx position: %f %f %f, dimensions: %f %f %f", bbx.pose_stamped.pose.position.x, bbx.pose_stamped.pose.position.y, bbx.pose_stamped.pose.position.z,
+    		bbx.dimensions.x, bbx.dimensions.y, bbx.dimensions.z);
+
+    //fill the bbx with points and generate a point cloud
+    pcl::PointCloud<PointT>::Ptr object_cloud (new pcl::PointCloud<PointT>);
+    ROS_DEBUG("Filling the point cloud for object to be sampled");
+
+    // Fill in the cloud data
+    object_cloud->width  = 200;
+    object_cloud->height = 1;
+    object_cloud->points.resize (object_cloud->width * object_cloud->height);
+    for (size_t i = 0; i < object_cloud->points.size (); ++i)
+    {
+    	object_cloud->points[i].x = min.getX() + bbx.dimensions.x * rand () / (RAND_MAX + 1.0f);
+    	object_cloud->points[i].y = min.getY() + bbx.dimensions.y * rand () / (RAND_MAX + 1.0f);
+    	object_cloud->points[i].z = min.getZ() + bbx.dimensions.z * rand () / (RAND_MAX + 1.0f);
+    }
+
+    sensor_msgs::PointCloud2 objectCloud2;
+    toROSMsg(*object_cloud, objectCloud2);
+    pubCloud("sampled_object", object_cloud, fixed_frame_);
+
+    breakpoint();
+    }
+
+*/
 
     tf::Transform identity;
     identity.setIdentity();
     for (std::vector<tf::Pose>::iterator it = object_belief.begin(); it!=object_belief.end(); it++)
     {
-    	//ROS_DEBUG("%f, %f, %f", it->getOrigin().getX(), it->getOrigin().getY(), it->getOrigin().getZ());
     	//Check if the resulting pose touches the table
     	if (check_visible && (it->getOrigin().getZ() - object_height/2 - tableHeight_ <= 0.02) &&
     			(it->getOrigin().getZ() - object_height/2 - tableHeight_ > 0)) {
@@ -554,10 +664,6 @@ bool Planner::checkHiddenOrVisible(sensor_msgs::PointCloud2 object_cloud2,
 		toROSMsg(temp,temp2);
 		temp2.header.frame_id = "base_link";
 		newPosePub_.publish(temp2);
-
-		//int user_input;
-		//std::cout << "Save the screen shot for new pose. Press 1 and then 'Enter' after you are done." << std::endl;
-		//std::cin >> user_input;
 	}
     return true;
 }
@@ -650,6 +756,7 @@ void Planner::findGridLocations(vector<sensor_msgs::PointCloud2> config)
 		ROS_INFO("Grid location for cluster %zu: %d %d %d %d", i, grid_locations[i][0], grid_locations[i][1],
 				grid_locations[i][2], grid_locations[i][3]);
 	}
+	grid_locations_.clear();
 	grid_locations_ = grid_locations;
 }
 
@@ -666,6 +773,8 @@ bool Planner::inFront(pcl::PointCloud<PointT> cloud, int cluster_idx)
 		//Check if this col has any other object in the same col but lesser row
 		for (unsigned int i = 0; i < grid_locations_.size(); i++)
 		{
+			if ((int)i == cluster_idx)
+				continue;
 			vector<int> temp_vec = grid_locations_[i];
 			if (temp_vec[1] == min_col && temp_vec[0] < min_row)
 				return false;
@@ -691,12 +800,7 @@ void Planner::findMovable(vector<sensor_msgs::PointCloud2> config,
 		pcl::PointCloud<PointT> cloud;
 		fromROSMsg(config[i], cloud);
 
-		//Get bounding box of target cloud
-		//ROS_DEBUG("Finding bounding box of cloud");
-		//object_manipulation_msgs::ClusterBoundingBox bbx;
-		//getClusterBoundingBox(config[i], bbx.pose_stamped, bbx.dimensions);
-
-		if (touchesTable(cloud, tableHeight_) && (cloud.points.size() >= 200)) {
+		if (touchesTable(cloud, tableHeight_) && (cloud.points.size() >= 50)) {
 			//This cluster is in contact with the table
 			ROS_INFO("Cluster %zu touches the table", i);
 			if (inFront(cloud, (int)i))	{
@@ -869,13 +973,14 @@ void Planner::simulateMove(vector<sensor_msgs::PointCloud2> config,
 		moved_cloud->points[i].x += translation_x;
 		moved_cloud->points[i].y += translation_y;
 		moved_cloud->points[i].z += translation_z;
-/*
-		tf::Vector3 orig(moved_cloud->points[i].x, moved_cloud->points[i].y, moved_cloud->points[i].z);
+
+		tf::Vector3 orig(moved_cloud->points[i].x - move.destPose.getOrigin().getX(),
+				moved_cloud->points[i].y - move.destPose.getOrigin().getY(),
+				moved_cloud->points[i].z - move.destPose.getOrigin().getZ());
 		tf::Vector3 moved = orig.rotate(rot.getAxis(), rot.getAngle());	//rot*orig;
-		moved_cloud->points[i].x = moved.getX();
-		moved_cloud->points[i].y = moved.getY();
-		moved_cloud->points[i].z = moved.getZ();
-	*/
+		moved_cloud->points[i].x = moved.getX() + move.destPose.getOrigin().getX();
+		moved_cloud->points[i].y = moved.getY() + move.destPose.getOrigin().getY();
+		moved_cloud->points[i].z = moved.getZ() + move.destPose.getOrigin().getZ();
 	}
 
 	//Replace the point cloud for the cluster being moved with the point cloud at the destination
@@ -890,7 +995,7 @@ void Planner::plan(int horizon,
 {
 	//Config: All clusters, big and small
 	//other_cloud: The whole object cloud with all clusters, big and small
-	//visible_clusters: Clusters that are big enough to be manipulated, that are in contact with the table, and in front
+	//movable_clusters: Clusters that are big enough to be manipulated, that are in contact with the table, and in front
 
 	ROS_DEBUG("Plan: horizon %d", horizon);
 
@@ -912,6 +1017,11 @@ void Planner::plan(int horizon,
 	if (horizon == MAX_HORIZON)
 		ROS_INFO("Horizon %d: Found %zu movable clusters", horizon, movable_clusters.size());
 
+	if (movable_clusters.size() == 0) {
+		ROS_ERROR("No movable clusters. Exiting.");
+		return;
+	}
+
 	//Find % revealed by each visible object
 	//map<int, double> percentage;
 	//generatePercentageIfRemoved(object_posterior_belief, movable_clusters, movable_idx, percentage);
@@ -929,7 +1039,7 @@ void Planner::plan(int horizon,
 	//For each possible move, do the following.
 
 	for (size_t move_idx = 0; move_idx < possible_moves.size(); move_idx++) {
-	//for (size_t move_idx = 0; move_idx < 2; move_idx++) {
+	//for (size_t move_idx = 0; move_idx < (size_t)std::min(5, (int)possible_moves.size()); move_idx++) {
 		ROS_DEBUG("Horizon %d: Simulating move %zu", horizon, move_idx);
 		double percentage_revealed_so_far = total_percentage_revealed_so_far;
 		Move this_move = possible_moves[move_idx];
@@ -948,7 +1058,17 @@ void Planner::plan(int horizon,
 		//ROS_DEBUG("Publishing new simulated config on topic new_simulated_config");
 		pubCloud("new_simulated_config", new_config_cloud, fixed_frame_);
 		
-		breakpoint();
+		bool in_contact = false;
+		for (unsigned int m = 0; m < new_config.size(); m++) {
+			if (m != this_move.cluster_idx && incontact(new_config[m], new_config[this_move.cluster_idx], 0.03, 100, 2000)) {
+				ROS_INFO("The moved cloud touches some other object. reject this move.");
+				in_contact = true;
+				break;
+			}
+		}
+
+		//breakpoint();
+		if (in_contact)	continue;
 
 		//Find percentage revealed by this move
 		double this_percentage_revealed = generatePercentageIfDisplaced(object_posterior_belief, new_config);

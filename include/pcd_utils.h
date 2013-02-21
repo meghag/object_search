@@ -56,3 +56,6 @@ void cluster(sensor_msgs::PointCloud2& cloud2,
 		vector<sensor_msgs::PointCloud2>& clusters);
 
 bool touchesTable(pcl::PointCloud<PointT> cloud, double table_height);
+
+bool incontact(sensor_msgs::PointCloud2 cloud2_1, sensor_msgs::PointCloud2 cloud2_2,
+		float cluster_tolerance, int min_cluster_size, int max_cluster_size);
