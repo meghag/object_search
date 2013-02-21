@@ -16,9 +16,9 @@ class CollisionTesting
 public :
 
     explicit CollisionTesting(ros::NodeHandle &nh) :
-        nh_(nh) {  }
+        nh_(nh) { kinematic_state = 0L; }
 
-    void init();
+    void init(bool fromBag = false, std::string filename = "", std::string fixed_frame_ = "");
 
     // change the frame the pointcloud is provided in from the standard torso_lift_link to something else
     void setCollisionFrame(std::string frame_id);
@@ -27,7 +27,7 @@ public :
     void setPointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, double pointSize = 0.01);
 
     // add pointcloud to collision environment
-    void addPointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, double pointSize = 0.01);
+    void addPointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, double pointSize = 0.01, tf::Transform *relative_transform = 0L);
 
     // has to be called after adding pointcloud
     void updateCollisionModel();
@@ -40,7 +40,7 @@ public :
 
     bool inCollision(int arm, std::vector<double> jointState);
 
-    arm_navigation_msgs::GetPlanningScene::Response *planning_scene_res;
+    arm_navigation_msgs::GetPlanningSceneResponse planning_scene_res;
 
     planning_models::KinematicState* kinematic_state;
 
@@ -59,6 +59,11 @@ public :
     static ros::Publisher vis_marker_array_publisher_;
 
     static bool publisher_initialized;
+
+    tf::Transformer transformer_;
+
+    std::vector<std::string> fixed_frame_names;
+    std::vector<tf::StampedTransform> fixed_frame_transforms;
 };
 
 
