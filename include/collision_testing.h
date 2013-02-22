@@ -24,10 +24,12 @@ public :
     void setCollisionFrame(std::string frame_id);
 
     // set pointcloud to collision environment, replacing previous data
-    void setPointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, double pointSize = 0.01);
+    template <class T>
+    void setPointCloud(const T &cloud, double pointSize = 0.01);
 
     // add pointcloud to collision environment
-    void addPointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, double pointSize = 0.01, tf::Transform *relative_transform = 0L);
+    template <class T>
+    void addPointCloud(const T &cloud, double pointSize = 0.01, tf::Transform *relative_transform = 0L);
 
     // has to be called after adding pointcloud
     void updateCollisionModel();
@@ -40,7 +42,7 @@ public :
 
     bool inCollision(int arm, std::vector<double> jointState);
 
-    arm_navigation_msgs::GetPlanningSceneResponse planning_scene_res;
+    arm_navigation_msgs::PlanningScene planning_scene;
 
     planning_models::KinematicState* kinematic_state;
 

@@ -61,9 +61,12 @@ std::string ik_frame_ = "/torso_lift_link";
 tf::TransformBroadcaster *br = 0;
 
 
-void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = fixed_frame_);
+template <class T>
+void pubCloud(const std::string &topic_name, T &cloud, std::string frame_id = fixed_frame_);
 
-void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
+//void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::string frame_id = fixed_frame_);
+
+void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
 {
     Eigen::Vector4f  	min_pt, max_pt;
     pcl::getMinMax3D 	( *cloud,min_pt,max_pt );
@@ -73,7 +76,7 @@ void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZR
 
 actionlib::SimpleActionClient<mc_graspable::FindGraspablesAction> *mcg_client_ = NULL;
 
-void getGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::Pose> &low, std::vector<tf::Pose> &high)
+void getGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pose> &low, std::vector<tf::Pose> &high)
 {
 
     if (!mcg_client_)
@@ -171,7 +174,7 @@ public:
 };
 
 
-void checkGrasps(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked)
+void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked)
 {
     // min coordinates of aabb
     std::vector<tf::Vector3> bb_min;
@@ -308,7 +311,7 @@ void init()
 gpc_polygon last;
 bool have_last = false;
 
-void pubPolygon(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_hull)
+void pubPolygon(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_hull)
 {
     visualization_msgs::Marker marker;
     marker.header.frame_id = rgb_optical_frame_;
@@ -495,7 +498,7 @@ tf::Stamped<tf::Pose> getPose(const std::string target_frame,const std::string l
     return ret;
 }
 
-void getCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, std::string frame_id, ros::Time after, ros::Time *tm = 0)
+void getCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::string frame_id, ros::Time after, ros::Time *tm = 0)
 {
 
     sensor_msgs::PointCloud2 pc;
@@ -533,8 +536,9 @@ void getCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, std::string frame_id
 
 std::map<std::string, ros::Publisher*> cloud_publishers;
 
-//void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id = "/map")
-void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::string frame_id)
+//void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::string frame_id = "/map")
+template <class T>
+void pubCloud(const std::string &topic_name, T &cloud, std::string frame_id)
 {
     ros::Publisher *cloud_pub;
 
@@ -563,7 +567,7 @@ void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZ
     //ROS_INFO("published frame %s %i x %i points on %s", out.header.frame_id.c_str(), out.height, out.width, topic_name.c_str());
 }
 
-void getPointsInBox(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr inBox, const tf::Vector3 min, const tf::Vector3 max)
+void getPointsInBox(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr inBox, const tf::Vector3 min, const tf::Vector3 max)
 {
     Eigen::Vector4f min_pt, max_pt;
 
@@ -581,7 +585,7 @@ void getPointsInBox(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, pcl::PointClou
 
     //std::cout << "idx size" << indices->size() << std::endl;
 
-    pcl::ExtractIndices<pcl::PointXYZRGB> ei;
+    pcl::ExtractIndices<pcl::PointXYZ> ei;
     ei.setInputCloud(cloud);
     ei.setIndices(indices);
     ei.filter(*inBox);
@@ -593,12 +597,12 @@ void getPointsInBox(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud, pcl::PointClou
 
 
 //orthogonal projection
-void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_projected)
+void projectToPlane(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_projected)
 //(tf::Vector3 planeNormal, double planeDist,
 {
     pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
 
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr plane_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr plane_cloud (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
     // construct a plane parallel to the camera sensor
     tf::Stamped<tf::Pose> planePoint;
@@ -615,7 +619,7 @@ void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
         planePoint.setRotation(tf::Quaternion(0,0,0,1));
         planePoint = getPoseIn(fixed_frame_.c_str(), planePoint);
 
-        pcl::PointXYZRGB planePt;
+        pcl::PointXYZ planePt;
         planePt.x = planePoint.getOrigin().x();
         planePt.y = planePoint.getOrigin().y();
         planePt.z = planePoint.getOrigin().z();
@@ -629,7 +633,7 @@ void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
     //pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
 
     // Create the segmentation object
-    pcl::SACSegmentation<pcl::PointXYZRGB> seg;
+    pcl::SACSegmentation<pcl::PointXYZ> seg;
     // Optional
     seg.setOptimizeCoefficients (true);
     // Mandatory
@@ -647,7 +651,7 @@ void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
               << coefficients->values[2] << " "
               << coefficients->values[3] << std::endl;
 
-    pcl::ProjectInliers<pcl::PointXYZRGB> proj;
+    pcl::ProjectInliers<pcl::PointXYZ> proj;
     proj.setModelType (pcl::SACMODEL_PLANE);
     proj.setInputCloud (cloud);
     proj.setModelCoefficients (coefficients);
@@ -659,7 +663,7 @@ void projectToPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::Po
 
 }
 
-void calcHull(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_hull)
+void calcHull(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_hull)
 {
 
     // Create a Concave Hull representation of the projected inliers
@@ -682,7 +686,7 @@ void calcHull(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointClo
     for (size_t i = 0; i < cloud->points.size(); i++)
         cloud->points[i].x = 0;
 
-    pcl::ConcaveHull<pcl::PointXYZRGB> chull;
+    pcl::ConcaveHull<pcl::PointXYZ> chull;
     chull.setInputCloud (cloud);
     chull.setAlpha (.01);
     chull.setAlpha (.1);
@@ -712,10 +716,10 @@ void calcHull(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointClo
 void test_hull_calc()
 {
 
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected_hull (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_box_projected_hull (new pcl::PointCloud<pcl::PointXYZ>);
 
     cloud_in_box->width = 0;
     cloud_in_box->height = 0;
@@ -815,7 +819,7 @@ struct lex_compare
     }
 };
 
-void insert_pointcloud(OcTreeROS *octoMap,tf::Point sensor_origin, pcl::PointCloud<pcl::PointXYZRGB>::Ptr inBox)
+void insert_pointcloud(OcTreeROS *octoMap,tf::Point sensor_origin, pcl::PointCloud<pcl::PointXYZ>::Ptr inBox)
 {
     geometry_msgs::Point point;
     tf::pointTFToMsg(sensor_origin, point);
@@ -866,16 +870,16 @@ boost::mutex transforms_from_planning_response_mutex;
 std::vector<tf::StampedTransform> transforms_from_planning_response; // for tf publishing
 
 
-void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::Pose> fixed_to_ik, tf::Stamped<tf::Pose> sensor_in_fixed)
+void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose> fixed_to_ik, tf::Stamped<tf::Pose> sensor_in_fixed)
 
-//void testOctomap()//const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud_hull)
+//void testOctomap()//const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_hull)
 {
 
 
     int n = 0;
 
     //generate object we search as a pointcloud
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr object_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr object_cloud (new pcl::PointCloud<pcl::PointXYZ>);
     for (int i=0; i < 100; i++)
     {
         tf::Pose act = vdc_pose(n++);
@@ -886,7 +890,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
         rel.setRotation(tf::Quaternion(0,0,0,1));
 
         act = act * rel;
-        pcl::PointXYZRGB pt;
+        pcl::PointXYZ pt;
         pt.x = act.getOrigin().x();
         pt.y = act.getOrigin().y();
         pt.z = act.getOrigin().z() * 4;
@@ -902,11 +906,11 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
     //generate a tabletopobject representing the object we search
     TableTopObject obj(object_cloud);
 
-    //pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_table (new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_unknown (new pcl::PointCloud<pcl::PointXYZRGB>);
+    //pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_table (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_unknown (new pcl::PointCloud<pcl::PointXYZ>);
 
     ros::Time lookup_time;
 
@@ -999,7 +1003,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
 
     pub_belief("vdc_poses",object_posterior_belief);
 
-    std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr > clusters;
+    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr > clusters;
 
     tum_os::Clusters clusters_msg;
     {
@@ -1013,7 +1017,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
             std::cout << "cluster " << i << clusters_msg.clusters[i].width << " * " << clusters_msg.clusters[i].height << std::endl;
             pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
             pcl::fromROSMsg(clusters_msg.clusters[i], *cloud);
-            pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloudrgb (new pcl::PointCloud<pcl::PointXYZRGB>);
+            /*pcl::PointCloud<pcl::PointXYZ>::Ptr cloudrgb (new pcl::PointCloud<pcl::PointXYZ>);
             for (size_t j = 0; j < cloud->points.size(); j++)
             {
                 pcl::PointXYZRGB pt;
@@ -1026,6 +1030,8 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
                 cloudrgb->points.push_back(pt);
             }
             clusters.push_back(cloudrgb);
+            */
+            clusters.push_back(cloud);
         }
     }
 
@@ -1237,12 +1243,12 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud ,tf::Stamped<tf::P
             if (i != max_idx)
             {
                 collision_testing.addPointCloud(clusters[i], .01,&tum_os_table_to_odom_combined);
-                std::cout << " adding  cluster " <<  i << "to obstacles" << std::endl;
+                std::cout << " adding cluster " <<  i << "to obstacles" << std::endl;
             }
         }
 
 
-        //pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_torso (new pcl::PointCloud<pcl::PointXYZRGB>);
+        //pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_torso (new pcl::PointCloud<pcl::PointXYZ>);
 
         ros::Rate rt(1);
         //tf::Stamped<tf::Pose> fixed_to_ik_variable = fixed_to_ik;
@@ -1520,7 +1526,7 @@ int main(int argc,char **argv)
     //  rt.sleep();
     //test_hull_calc();
 
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
     //tf::Stamped<tf::Pose> fixed_to_ik;
     tf::Stamped<tf::Pose> sensor_in_fixed;
 
@@ -1667,22 +1673,22 @@ int main(int argc,char **argv)
 
             //arm_navigation_msgs::PlanningScene ps = collision_testing.planning_scene_res.planning_scene;
 
-            std::cout << "Planning scene :" << collision_testing.planning_scene_res.planning_scene << std::endl;
+            std::cout << "Planning scene :" << collision_testing.planning_scene << std::endl;
 
             //std::cout << "Joint State : " << collision_testing.planning_scene_res.planning_scene.robot_state.joint_state.name.size() << std::endl;
             //for (size_t i = 0; i < collision_testing.planning_scene_res.planning_scene.robot_state.joint_state.name.size(); ++i)
             //  std::cout << "Joint: " << collision_testing.planning_scene_res.planning_scene.robot_state.joint_state.name[i] << std::endl;
 
-            joint_state = collision_testing.planning_scene_res.planning_scene.robot_state.joint_state;
+            joint_state = collision_testing.planning_scene.robot_state.joint_state;
 
             size_t hit = -1;
 
-            for (size_t i = 0; i < collision_testing.planning_scene_res.planning_scene.fixed_frame_transforms.size(); ++i)
+            for (size_t i = 0; i < collision_testing.planning_scene.fixed_frame_transforms.size(); ++i)
             {
-                std::cout << "fixed frame " << collision_testing.planning_scene_res.planning_scene.fixed_frame_transforms[i] << std::endl;
+                std::cout << "fixed frame " << collision_testing.planning_scene.fixed_frame_transforms[i] << std::endl;
 
                 tf::StampedTransform act;
-                tf::transformStampedMsgToTF(collision_testing.planning_scene_res.planning_scene.fixed_frame_transforms[i], act);
+                tf::transformStampedMsgToTF(collision_testing.planning_scene.fixed_frame_transforms[i], act);
                 //geometry_msgs/TransformStamped[]
                 //std::string tmp = act.frame_id_;
                 //act.frame_id_ = act.child_frame_id_;

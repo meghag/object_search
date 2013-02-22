@@ -34,11 +34,11 @@ void CollisionTesting::init(bool fromBag, std::string filename, std::string fixe
 
                 //std::cout << "Planning scene msg :" << msg_in->planning_scene << std::endl;
 
-                planning_scene_res = *msg_in;
+                planning_scene = msg_in->planning_scene;
 
                 //std::cout << "Planning scene :" << planning_scene_res.planning_scene << std::endl;
 
-                arm_navigation_msgs::PlanningScene &ps = planning_scene_res.planning_scene;
+                arm_navigation_msgs::PlanningScene &ps = planning_scene;
 
                 //std::vector<std::string> fixed_frame_names;
 
@@ -164,9 +164,12 @@ void CollisionTesting::init(bool fromBag, std::string filename, std::string fixe
         ROS_INFO("                                        is up.");
 
         arm_navigation_msgs::GetPlanningScene::Request planning_scene_req;
+        arm_navigation_msgs::GetPlanningScene::Response planning_scene_res;
 
         if (!get_planning_scene_client.call(planning_scene_req, planning_scene_res))
             ROS_ERROR("Could not get planning scene");
+        else
+            planning_scene = planning_scene_res.planning_scene;
     }
 
     //planning_scene_res.planning_scene.collision_map.header.frame_id = "/torso_lift_link";
@@ -196,16 +199,16 @@ void CollisionTesting::init(bool fromBag, std::string filename, std::string fixe
 
 void CollisionTesting::setCollisionFrame(std::string frame_id)
 {
-    planning_scene_res.planning_scene.collision_map.header.frame_id = frame_id;
+    planning_scene.collision_map.header.frame_id = frame_id;
 }
 
 void CollisionTesting::resetPointCloud()
 {
-    planning_scene_res.planning_scene.collision_map.boxes.clear();
+    planning_scene.collision_map.boxes.clear();
 }
 
-
-void CollisionTesting::setPointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, double pointSize)
+template <class T>
+void CollisionTesting::setPointCloud(const T &cloud, double pointSize)
 {
     resetPointCloud();
     addPointCloud(cloud, pointSize);
@@ -217,15 +220,16 @@ void CollisionTesting::updateCollisionModel()
     if (kinematic_state != 0)
         collision_models->revertPlanningScene(kinematic_state);
 
-    kinematic_state = collision_models->setPlanningScene(planning_scene_res.planning_scene);
+    kinematic_state = collision_models->setPlanningScene(planning_scene);
     if (kinematic_state == 0)
         ROS_ERROR("KINEMATIC STATE WAS NOT RETURNED BY SETPLANNINGSCENE");
 
-    std::cout << "Collision frame " <<  planning_scene_res.planning_scene.collision_map.header.frame_id << std::endl;
-    std::cout << "Collision map size" <<     planning_scene_res.planning_scene.collision_map.boxes.size() << std::endl;
+    std::cout << "Collision frame " <<  planning_scene.collision_map.header.frame_id << std::endl;
+    std::cout << "Collision map size" <<  planning_scene.collision_map.boxes.size() << std::endl;
 }
 
-void CollisionTesting::addPointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, double pointSize, tf::Transform *relative_transform)
+template <class T>
+void CollisionTesting::addPointCloud(const T &cloud, double pointSize, tf::Transform *relative_transform)
 {
 
     for (size_t i = 0; i < cloud->points.size(); ++i)
@@ -261,10 +265,16 @@ void CollisionTesting::addPointCloud(const pcl::PointCloud<pcl::PointXYZRGB>::Pt
         box.center.y = tf_pt.y();
         box.center.z = tf_pt.z();
 
-        planning_scene_res.planning_scene.collision_map.boxes.push_back(box);
+        planning_scene.collision_map.boxes.push_back(box);
     }
 
 }
+
+template
+void CollisionTesting::addPointCloud(const boost::shared_ptr<pcl::PointCloud<pcl::PointXYZ> >  &cloud, double pointSize, tf::Transform *relative_transform);
+
+template
+void CollisionTesting::addPointCloud(const boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGB> >  &cloud, double pointSize, tf::Transform *relative_transform);
 
 bool CollisionTesting::inCollision(int arm, double jointState[])
 {
