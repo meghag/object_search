@@ -33,9 +33,7 @@ public:
     pcl::PointCloud<PointT>::Ptr getAsCloud();
 
     octomap::OcTreeROS *m_octoMap;
-	//octomap::OcTreeROS *m_octoMap_copy;
     pcl::PointCloud<PointT>::Ptr cloud;
-	//pcl::PointCloud<PointT>::Ptr cloud_copy;
 
     bool has_octo;
 

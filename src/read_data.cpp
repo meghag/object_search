@@ -129,7 +129,7 @@ private:
     //pass_through_gen(cloud,pcdFiltered,true,0,1,true,-0.32,0.32,true,1.012,1.3);   // Kinect and shelf
     //pass_through_gen(cloud,pcdFiltered,true,0,1,true,-0.32,0.32,true,1.07,1.3);    // Narrow stereo and shelf
     //pass_through_gen(cloud,pcdFiltered,true,0,1.4,true,-1.0,1.0,true,0.81,1.1);      // Narrow stereo and simulation table
-    pass_through_gen(cloud,pcdFiltered,true,BB_MIN.x(),BB_MAX.x(),true,BB_MIN.y(),BB_MAX.y(),true,BB_MIN.z(),BB_MAX.z()-0.05);      // Narrow stereo and simulation table
+    pass_through_gen(cloud,pcdFiltered,true,BB_MIN.x(),BB_MAX.x(),true,BB_MIN.y(),BB_MAX.y(),true,BB_MIN.z(),BB_MAX.z()-0.005);      // Narrow stereo and simulation table
     if (pcdFiltered->points.size() == 0) {
     	new_data_wanted_ = true;
     	return;
@@ -140,6 +140,7 @@ private:
     	  input_pub_.publish(topub);
 
       /* ********* Segmentation of the cloud into table and object clouds **********/
+      //TODO: Detect only horizontal planes!!
       planar_seg(pcdFiltered,planarCloud,objectCloud,(string)"planar_cloud.pcd",(string)"object_cloud.pcd");
 
       toROSMsg(*planarCloud, topub);
@@ -182,6 +183,8 @@ private:
       plan_srv.request.bb_max[0] = max.x();
       plan_srv.request.bb_max[1] = max.y();
       plan_srv.request.bb_max[2] = BB_MAX.z();
+      ROS_INFO("bb_min: %f, %f, %f     bb_max: %f, %f, %f", min.x(), min.y(), max.z(),
+          		  max.x(), max.y(), BB_MAX.z());
       //planRequestPub_.publish(plan_request);
       ROS_INFO("Calling planning service.");
       if (!planRequestClient_.call(plan_srv.request, plan_srv.response)) {
@@ -193,8 +196,6 @@ private:
     	  new_data_wanted_ = true;
     	  ros::Duration(2.0).sleep();
       }
-      ROS_INFO("bb_min: %f, %f, %f     bb_max: %f, %f, %f", min.x(), min.y(), max.z(),
-    		  max.x(), max.y(), BB_MAX.z());
   };//End of function getObjectCloud
 
   bool getNewDataCallback(tum_os::Get_New_PCD::Request &req,

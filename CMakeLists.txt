@@ -29,6 +29,11 @@ rosbuild_gensrv()
 #rosbuild_add_executable(example examples/example.cpp)
 #target_link_libraries(example ${PROJECT_NAME})
 
+find_package(octomap REQUIRED)
+include_directories(${OCTOMAP_INCLUDE_DIRS})
+link_directories(${OCTOMAP_LIBRARY_DIRS})
+link_libraries(${OCTOMAP_LIBRARIES})
+
 rosbuild_add_library(${PROJECT_NAME} src/set_marker.cpp)
 rosbuild_add_library(pcd_utils src/pcd_utils.cpp)
 
@@ -54,6 +59,7 @@ rosbuild_add_executable(move_head_manual src/move_head_manual.cpp)
 
 rosbuild_add_executable(planner src/planner.cpp src/TableTopObject.cpp)
 target_link_libraries(planner gpcl octomap octomath pcd_utils)
+
 
 ##rosbuild_add_executable(manipulator src/manipulator.cpp)
 ##target_link_libraries(manipulator ${PROJECT_NAME} gpcl)

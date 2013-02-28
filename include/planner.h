@@ -42,6 +42,8 @@ extern "C" {
 #include <object_manipulation_msgs/FindClusterBoundingBox2.h>
 #include <object_manipulation_msgs/ClusterBoundingBox.h>
 
+//#include <octomap/conversions.h>
+
 #include "pcd_utils.h"
 #include "TableTopObject.h"
 //#include <tum_os/Clusters.h>
@@ -78,13 +80,14 @@ std::map<std::string, ros::Publisher*> belief_publishers;
 std::map<std::string, ros::Publisher*> cloud_publishers;
 
 struct Move {
-	unsigned int cluster_idx;		//An index to refer to the object in the collection of visible objects.
+	unsigned int cluster_idx;		//An index to refer to the object in the collection of objects.
 	sensor_msgs::PointCloud2 objectToMove;
 	tf::Pose sourcePose;
 	tf::Pose destPose;
+	bool push;						//true if the object can only be pushed, false otherwise.
 
 	//Constructor
-	Move(unsigned int c, sensor_msgs::PointCloud2 pcd, tf::Pose s, tf::Pose p):cluster_idx(c), objectToMove(pcd), sourcePose(s), destPose(p){}
+	Move(unsigned int c, sensor_msgs::PointCloud2 pcd, tf::Pose s, tf::Pose p, bool act):cluster_idx(c), objectToMove(pcd), sourcePose(s), destPose(p), push(act){}
 };
 
 class Planner
@@ -98,6 +101,7 @@ private:
 	//void planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_request);
 	bool planRequestCallback(tum_os::PlanService::Request &plan_request, tum_os::PlanService::Response &plan_response);
 	void call_plan(sensor_msgs::PointCloud2 objectCloud2);
+	void simulate_plan_execution();
 	void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses);
 	void pubCloud(const std::string &topic_name, const pcl::PointCloud<PointT>::Ptr &cloud, std::string frame_id);
 	tf::Stamped<tf::Pose> getPose(const std::string target_frame, const std::string lookup_frame, ros::Time tm);
@@ -108,9 +112,12 @@ private:
 	bool inFront(pcl::PointCloud<PointT> cloud, int cluster_idx);
 	void make_grid(vector<sensor_msgs::PointCloud2> config);
 	void display_grid();
+	void display_bbx();
 
 	void samplePose(sensor_msgs::PointCloud2 target_cloud2,
 					TableTopObject otherCloudTTO,
+					tf::Vector3 sampling_bb_min,
+					tf::Vector3 sampling_bb_max,
 					vector<tf::Pose>& object_posterior_belief,
 					bool check_hidden,
 					bool check_visible);
@@ -145,13 +152,10 @@ private:
 			vector<Move>& best_next_action_sequence,
 			double& total_percentage_revealed_so_far);
 
-	/*
 	void random_plan(int horizon,
 			vector<sensor_msgs::PointCloud2> config,
 			sensor_msgs::PointCloud2 other_cloud,
-			vector<Move>& action_sequence_so_far,
-			double& total_percentage_revealed_so_far);
-	*/
+			vector<Move>& action_sequence_so_far);
 
 	void simulateMove(vector<sensor_msgs::PointCloud2> config,
 			Move move, vector<sensor_msgs::PointCloud2>& new_config);
@@ -178,12 +182,13 @@ private:
 	ros::ServiceClient bbx_client_;
 	
 	//Variables
+	float target_x, target_y, target_z;
 	sensor_msgs::PointCloud2 targetCloud2_;
 	sensor_msgs::PointCloud2 objectCloud2_;
 	std::vector<sensor_msgs::PointCloud2> clustersDetected_;
 	double tableHeight_;
 	tf::TransformListener listener;
-	tf::Stamped<tf::Pose> base_to_camera_;
+	//tf::Stamped<tf::Pose> base_to_camera_;
 	tf::Vector3 BB_MIN;
 	tf::Vector3 BB_MAX;
 	vector<Move> action_sequence_;
@@ -191,6 +196,13 @@ private:
 	int MAX_HORIZON;
 	float grid_resolution_;
 	vector<vector<int> > grid_locations_;
+	sensor_msgs::PointCloud2 known_occupied_pcd_;
+
+	octomap::OcTree* octree_;
+	std::list<octomap::OcTreeVolume> freeVoxels_;
+	std::list<octomap::OcTreeVolume> occupiedVoxels_;
+	tf::Stamped<tf::Pose> cameraOrigin_;
+	sensor_msgs::PointCloud2 currentConfigPCL_;
 };
 
 #endif

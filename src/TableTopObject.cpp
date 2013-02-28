@@ -33,7 +33,6 @@ TableTopObject::TableTopObject(const tf::Vector3 sensorOrigin, const double tabl
     addPointCloud2(sensorOrigin,tableHeight,cloud_in_box);
 }
 
-
 void TableTopObject::initOcto()
 {
     if (!has_octo)
@@ -175,45 +174,6 @@ void TableTopObject::addPointCloud2(const tf::Vector3 sensorOrigin, const double
 
 }
 
-/*
-void TableTopObject::addPointCloudToCopy(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<PointT>::Ptr cloud_to_add)
-{	
-    for (size_t i = 0; i < cloud_to_add->points.size(); i++)
-    {
-        cloud_copy->points.push_back(cloud_to_add->points[i]);
-    }
-	
-    pcl::PointCloud<PointT>::Ptr cloud_to_add_projected (new pcl::PointCloud<PointT>);
-	
-    projectToPlanePerspective(sensorOrigin, tableHeight, cloud_to_add, cloud_to_add_projected);
-	
-    octomap::KeySet occupied_cells;
-	
-    for (size_t i = 0; i < cloud_to_add->points.size(); ++i)
-    {
-        octomap::KeyRay ray;
-        octomath::Vector3 start;
-        start.x() = cloud_to_add->points[i].x;
-        start.y() = cloud_to_add->points[i].y;
-        start.z() = cloud_to_add->points[i].z;
-        octomath::Vector3 end;
-        end.x() = cloud_to_add_projected->points[i].x;
-        end.y() = cloud_to_add_projected->points[i].y;
-        end.z() = cloud_to_add_projected->points[i].z;
-        m_octoMap->octree.computeRayKeys (start, end, ray);
-        for (octomap::KeyRay::iterator it = ray.begin(); it != ray.end(); it++)
-        {
-            occupied_cells.insert(*it);
-        }
-    }
-	
-    for (KeySet::iterator it = occupied_cells.begin(); it != occupied_cells.end(); ++it)
-    {
-        m_octoMap_copy->octree.updateNode(*it, true, false);
-    }	
-}
-*/
-
 bool TableTopObject::checkCollision(tf::Transform ownTransform, tf::Transform otherTransform, TableTopObject &otherObject)
 {
 
@@ -331,8 +291,6 @@ bool TableTopObject::checkCoveredPointcloud(tf::Transform ownTransform, tf::Tran
     }
     return true;
 }
-
-
 
 pcl::PointCloud<PointT>::Ptr TableTopObject::getAsCloud()
 {

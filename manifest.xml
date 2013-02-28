@@ -24,6 +24,7 @@
   <depend package="actionlib"/>
   <depend package="pr2_controllers_msgs"/>
   <depend package="octomap_ros"/>
+  <depend package="octomap"/>
   <depend package="mc_graspable"/>
   <depend package="planning_environment"/>
   <depend package="rosbag"/>
