@@ -40,7 +40,7 @@ public :
 
     static void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
 
-    void visualizeGrasp(size_t grasp_type, std::string frame_id);
+    void visualizeGrasp(size_t grasp_type, std::string frame_id, int highlight = -1);
 
     void initGrasps();
 

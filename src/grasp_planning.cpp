@@ -217,39 +217,85 @@ void GraspPlanning::initGrasps()
 {
     GraspBoxSet act;
 
-    double xShift = .18; // distance toolframe to wrist, we work in wrist later for ik etc
+    /*
+       act.bb_min.push_back(tf::Vector3(0.21,-0.02,-0.02));
+       act.bb_max.push_back(tf::Vector3(0.22,0.02,0.02));
+       act.bb_full.push_back(true);
 
-    // we want to see some points centered between the grippers
-    act.bb_min.push_back(tf::Vector3(xShift + 0.03,-0.02,-.02));
-    act.bb_max.push_back(tf::Vector3(xShift + 0.04, 0.02, .02));
+       act.bb_min.push_back(tf::Vector3(0.22,-0.02,-0.02));
+       act.bb_max.push_back(tf::Vector3(0.23,0.02,0.02));
+       act.bb_full.push_back(true);
+
+       act.bb_min.push_back(tf::Vector3(0.18,0.03,-0.02));
+       act.bb_max.push_back(tf::Vector3(0.23,0.09,0.02));
+       act.bb_full.push_back(false);
+
+       act.bb_min.push_back(tf::Vector3(0.18,-0.09,-0.02));
+       act.bb_max.push_back(tf::Vector3(0.23,-0.03,0.02));
+       act.bb_full.push_back(false);
+
+       act.bb_min.push_back(tf::Vector3(-0.02,-0.09,-0.03));
+       act.bb_max.push_back(tf::Vector3(0.18,0.09,0.03));
+      act.bb_full.push_back(false);*/
+
+    act.bb_min.push_back(tf::Vector3(0.23,-0.05,-0.02));
+    act.bb_max.push_back(tf::Vector3(0.24,-0.03,0.02));
     act.bb_full.push_back(true);
 
-    // we want to see some points centered between the grippers
-    act.bb_min.push_back(tf::Vector3(xShift + 0.04,-0.02,-.02));
-    act.bb_max.push_back(tf::Vector3(xShift + 0.05, 0.02, .02));
+    act.bb_min.push_back(tf::Vector3(0.23,0.03,-0.02));
+    act.bb_max.push_back(tf::Vector3(0.24,0.05,0.02));
     act.bb_full.push_back(true);
 
-    //coarsest of approximation for gripper fingers when gripper is open
-    act.bb_min.push_back(tf::Vector3(xShift + 0.00,0.03,-.02));
-    act.bb_max.push_back(tf::Vector3(xShift + 0.05,0.09, .02));
+    act.bb_min.push_back(tf::Vector3(0.18,0.03,-0.02));
+    act.bb_max.push_back(tf::Vector3(0.23,0.09,0.02));
     act.bb_full.push_back(false);
 
-    act.bb_min.push_back(tf::Vector3(xShift + 0.00,-0.09,-.02));
-    act.bb_max.push_back(tf::Vector3(xShift + 0.05,-0.03, .02));
+    act.bb_min.push_back(tf::Vector3(0.18,-0.09,-0.02));
+    act.bb_max.push_back(tf::Vector3(0.23,-0.03,0.02));
     act.bb_full.push_back(false);
 
-    // we want to be able to approach from far away, so check the space we sweep when approaching and grasping
-    act.bb_min.push_back(tf::Vector3(xShift - 0.2 ,-0.09,-.03));
-    act.bb_max.push_back(tf::Vector3(xShift + 0.00, 0.09, .03));
+    act.bb_min.push_back(tf::Vector3(-0.02,-0.09,-0.03));
+    act.bb_max.push_back(tf::Vector3(0.18,0.09,0.03));
     act.bb_full.push_back(false);
 
-    act.name = "grasp_forward";
+    act.name = "push_forward";
+
+    /*
+
+        double xShift = .18; // distance toolframe to wrist, we work in wrist later for ik etc
+
+        // we want to see some points centered between the grippers
+        act.bb_min.push_back(tf::Vector3(xShift + 0.03,-0.02,-.02));
+        act.bb_max.push_back(tf::Vector3(xShift + 0.04, 0.02, .02));
+        act.bb_full.push_back(true);
+
+        // we want to see some points centered between the grippers
+        act.bb_min.push_back(tf::Vector3(xShift + 0.04,-0.02,-.02));
+        act.bb_max.push_back(tf::Vector3(xShift + 0.05, 0.02, .02));
+        act.bb_full.push_back(true);
+
+        //coarsest of approximation for gripper fingers when gripper is open
+        act.bb_min.push_back(tf::Vector3(xShift + 0.00,0.03,-.02));
+        act.bb_max.push_back(tf::Vector3(xShift + 0.05,0.09, .02));
+        act.bb_full.push_back(false);
+
+        act.bb_min.push_back(tf::Vector3(xShift + 0.00,-0.09,-.02));
+        act.bb_max.push_back(tf::Vector3(xShift + 0.05,-0.03, .02));
+        act.bb_full.push_back(false);
+
+        // we want to be able to approach from far away, so check the space we sweep when approaching and grasping
+        act.bb_min.push_back(tf::Vector3(xShift - 0.2 ,-0.09,-.03));
+        act.bb_max.push_back(tf::Vector3(xShift + 0.00, 0.09, .03));
+        act.bb_full.push_back(false);
+
+        act.name = "grasp_forward";
+        */
 
     grasps.push_back(act);
 
 }
 
-void GraspPlanning::visualizeGrasp(size_t grasp_type, std::string frame_id)
+void GraspPlanning::visualizeGrasp(size_t grasp_type, std::string frame_id, int highlight)
 {
 
     if (markerArrayPub_==0)
@@ -294,9 +340,14 @@ void GraspPlanning::visualizeGrasp(size_t grasp_type, std::string frame_id)
         marker.color.r = grasp.bb_full[i] ? 0.0 : 1.0;
         marker.color.g = grasp.bb_full[i] ? 1.0 : 0.0;
         marker.color.b = 0.0;
+
+        if (highlight == i)
+        {
+            marker.color.a = 0.75;
+        }
+
         arr.markers.push_back(marker);
     }
-    ROS_INFO("pub");
 
     markerArrayPub_->publish(arr);
 }
