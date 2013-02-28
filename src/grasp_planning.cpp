@@ -1,5 +1,17 @@
-
 #include "../include/grasp_planning.h"
+#include "../include/van_der_corput.h"
+#include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
+
+
+int get_ik(const int arm, const tf::Pose targetPose, std::vector<double> &jointValues);
+
+GraspPlanning::GraspPlanning()
+{
+    markerArrayPub_ = 0L;
+    nh_ = 0L;
+    initGrasps();
+}
 
 bool GraspPlanning::inside(tf::Vector3 point, tf::Vector3 bbmin, tf::Vector3 bbmax)
 {
@@ -105,23 +117,23 @@ GraspPlanning::graspBoxSetFromMsg(const tum_os::BoxSet &msg)
     for (std::vector<std_msgs::Bool>::const_iterator it = msg.include_points.begin(); it != msg.include_points.end();  ++it)
         ret.bb_full.push_back(it->data);
     for (std::vector<geometry_msgs::Point>::const_iterator it = msg.min.begin(); it != msg.min.end();  ++it)
-        {
-            tf::Point pt;
-            tf::pointMsgToTF(*it,pt);
-            ret.bb_min.push_back(pt);
-        }
+    {
+        tf::Point pt;
+        tf::pointMsgToTF(*it,pt);
+        ret.bb_min.push_back(pt);
+    }
     for (std::vector<geometry_msgs::Point>::const_iterator it = msg.max.begin(); it != msg.max.end();  ++it)
-        {
-            tf::Point pt;
-            tf::pointMsgToTF(*it,pt);
-            ret.bb_max.push_back(pt);
-        }
+    {
+        tf::Point pt;
+        tf::pointMsgToTF(*it,pt);
+        ret.bb_max.push_back(pt);
+    }
     for (std::vector<geometry_msgs::Pose>::const_iterator it = msg.approach.begin(); it != msg.approach.end();  ++it)
-        {
-            tf::Pose ps;
-            tf::poseMsgToTF(*it,ps);
-            ret.approach.push_back(ps);
-        }
+    {
+        tf::Pose ps;
+        tf::poseMsgToTF(*it,ps);
+        ret.approach.push_back(ps);
+    }
     return ret;
 }
 
@@ -157,4 +169,134 @@ GraspPlanning::graspBoxSetToMsg(const GraspBoxSet &boxset)
     }
 
     return ret;
+}
+
+
+void GraspPlanning::minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+{
+    Eigen::Vector4f  	min_pt, max_pt;
+    pcl::getMinMax3D 	( *cloud,min_pt,max_pt );
+    min = tf::Vector3(min_pt.x(),min_pt.y(),min_pt.z());
+    max = tf::Vector3(max_pt.x(),max_pt.y(),max_pt.z());
+}
+
+void GraspPlanning::checkGraspsIK(int arm, tf::Stamped<tf::Pose> fixed_to_ik, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked)
+{
+    std::vector<double> result;
+    result.resize(7);
+    std::fill( result.begin(), result.end(), 0 );
+
+    for (std::vector<tf::Pose>::iterator it = unchecked.begin(); it!=unchecked.end(); ++it)
+    {
+        tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(*it);
+        if (get_ik(arm, in_ik_frame, result) == 1)
+            checked.push_back(*it);
+    }
+
+}
+
+
+template <class PointCloudPtr>
+std::vector<tf::Pose> GraspPlanning::calcGrasps(const PointCloudPtr object_model, const PointCloudPtr environment_model, bool check_ik, tf::Stamped<tf::Pose> fixed_to_ik, size_t grasp_type, size_t sample_size)
+{
+    std::vector<tf::Pose> ik_checked,random,low,high,checked,filtered, reachable, collision_free, ret;
+    tf::Vector3 cluster_min, cluster_max;
+
+    minmax3d(cluster_min, cluster_max, object_model);
+    cluster_min -= tf::Vector3(.15,.15,.15);
+    cluster_max += tf::Vector3(.15,.15,.15);
+
+    ret.resize(sample_size);
+    for (int i = 0; i < sample_size; ++i)
+        ret.push_back(VanDerCorput::vdc_pose_bound(cluster_min, cluster_max, i));
+
+    return ret;
+}
+
+void GraspPlanning::initGrasps()
+{
+    GraspBoxSet act;
+
+    double xShift = .18; // distance toolframe to wrist, we work in wrist later for ik etc
+
+    // we want to see some points centered between the grippers
+    act.bb_min.push_back(tf::Vector3(xShift + 0.03,-0.02,-.02));
+    act.bb_max.push_back(tf::Vector3(xShift + 0.04, 0.02, .02));
+    act.bb_full.push_back(true);
+
+    // we want to see some points centered between the grippers
+    act.bb_min.push_back(tf::Vector3(xShift + 0.04,-0.02,-.02));
+    act.bb_max.push_back(tf::Vector3(xShift + 0.05, 0.02, .02));
+    act.bb_full.push_back(true);
+
+    //coarsest of approximation for gripper fingers when gripper is open
+    act.bb_min.push_back(tf::Vector3(xShift + 0.00,0.03,-.02));
+    act.bb_max.push_back(tf::Vector3(xShift + 0.05,0.09, .02));
+    act.bb_full.push_back(false);
+
+    act.bb_min.push_back(tf::Vector3(xShift + 0.00,-0.09,-.02));
+    act.bb_max.push_back(tf::Vector3(xShift + 0.05,-0.03, .02));
+    act.bb_full.push_back(false);
+
+    // we want to be able to approach from far away, so check the space we sweep when approaching and grasping
+    act.bb_min.push_back(tf::Vector3(xShift - 0.2 ,-0.09,-.03));
+    act.bb_max.push_back(tf::Vector3(xShift + 0.00, 0.09, .03));
+    act.bb_full.push_back(false);
+
+    act.name = "grasp_forward";
+
+    grasps.push_back(act);
+
+}
+
+void GraspPlanning::visualizeGrasp(size_t grasp_type, std::string frame_id)
+{
+
+    if (markerArrayPub_==0)
+    {
+        if (nh_ == 0)
+        {
+            nh_ = new ros::NodeHandle();
+        }
+        markerArrayPub_ = new ros::Publisher();
+        *markerArrayPub_ = nh_->advertise<visualization_msgs::MarkerArray>( "grasp_visualization", 0 );
+    }
+
+    if (grasp_type > grasps.size())
+    {
+        ROS_ERROR("GRASP %zu not defined", grasp_type);
+        return;
+    }
+
+    visualization_msgs::MarkerArray arr;
+
+    GraspBoxSet &grasp = grasps[grasp_type];
+    for (size_t i = 0; i < grasp.bb_max.size(); ++i)
+    {
+        visualization_msgs::Marker marker;
+        marker.header.frame_id = frame_id;
+        marker.header.stamp = ros::Time::now();
+        marker.ns = "grasps";
+        marker.id = i;
+        marker.type = visualization_msgs::Marker::CUBE;
+        marker.action = visualization_msgs::Marker::ADD;
+        marker.pose.position.x = (grasp.bb_max[i].x() + grasp.bb_min[i].x()) / 2.0f;
+        marker.pose.position.y = (grasp.bb_max[i].y() + grasp.bb_min[i].y()) / 2.0f;
+        marker.pose.position.z = (grasp.bb_max[i].z() + grasp.bb_min[i].z()) / 2.0f;
+        marker.pose.orientation.x = 0.0;
+        marker.pose.orientation.y = 0.0;
+        marker.pose.orientation.z = 0.0;
+        marker.pose.orientation.w = 1.0;
+        marker.scale.x = grasp.bb_max[i].x() - grasp.bb_min[i].x();
+        marker.scale.y = grasp.bb_max[i].y() - grasp.bb_min[i].y();
+        marker.scale.z = grasp.bb_max[i].z() - grasp.bb_min[i].z();
+        marker.color.a = 0.5;
+        marker.color.r = grasp.bb_full[i] ? 0.0 : 1.0;
+        marker.color.g = grasp.bb_full[i] ? 1.0 : 0.0;
+        marker.color.b = 0.0;
+        arr.markers.push_back(marker);
+    }
+    ROS_INFO("pub");
+
+    markerArrayPub_->publish(arr);
 }

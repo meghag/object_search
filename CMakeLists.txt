@@ -49,11 +49,14 @@ rosbuild_add_executable(move_head_manual src/move_head_manual.cpp)
 
 #rosbuild_add_executable(euclidean_seg src/euclidean_segmentation.cpp)
 
-#rosbuild_add_executable(pointcloud_to_hull src/TableTopObject.cpp src/pointcloud_to_hull.cpp src/kinematics.cpp src/collision_testing.cpp)
-#target_link_libraries(pointcloud_to_hull gpcl octomap octomath)
+rosbuild_add_executable(pointcloud_to_hull src/TableTopObject.cpp src/pointcloud_to_hull.cpp src/kinematics.cpp src/collision_testing.cpp src/grasp_planning.cpp src/van_der_corput.cpp)
+target_link_libraries(pointcloud_to_hull gpcl octomap octomath)
 
 rosbuild_add_executable(planner src/planner.cpp src/TableTopObject.cpp)
 target_link_libraries(planner gpcl octomap octomath pcd_utils)
 
-##rosbuild_add_executable(manipulator src/manipulator.cpp)
-##target_link_libraries(manipulator ${PROJECT_NAME} gpcl)
+rosbuild_add_executable(manipulator src/manipulator.cpp)
+target_link_libraries(manipulator ${PROJECT_NAME} gpcl)
+
+rosbuild_add_executable(grasp_designer src/grasp_designer.cpp src/kinematics.cpp src/grasp_planning.cpp src/van_der_corput.cpp)
+#target_link_libraries(grasp_designer octomap octomath)
