@@ -241,12 +241,12 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pos
     if (1)
     {
         //push forward closed gripper
-        act.bb_min.push_back(tf::Vector3(0.23,-0.02,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.24,3.46945e-18,0.02));
+        act.bb_min.push_back(tf::Vector3(0.23,-0.01,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.26,0.01,0.02));
         act.bb_full.push_back(true);
 
-        act.bb_min.push_back(tf::Vector3(0.23,-3.46945e-18,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.24,0.02,0.02));
+        act.bb_min.push_back(tf::Vector3(0.23,-0.01,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.26,0.01,0.02));
         act.bb_full.push_back(true);
 
         act.bb_min.push_back(tf::Vector3(0.18,-3.46945e-18,-0.02));
@@ -260,6 +260,8 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pos
         act.bb_min.push_back(tf::Vector3(-0.02,-0.06,-0.03));
         act.bb_max.push_back(tf::Vector3(0.18,0.06,0.03));
         act.bb_full.push_back(false);
+
+
     }
 
 
@@ -317,8 +319,8 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pos
             checked.push_back(*it);
         }
     }
-
 }
+
 
 void checkGraspsIK(int arm, tf::Stamped<tf::Pose> fixed_to_ik, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked)
 {
@@ -1333,6 +1335,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
         collision_testing.updateCollisionModel();
 
 
+        ROS_INFO("REACHABLE %zu", reachable.size());
         while (ros::ok())
         {
 
@@ -1356,22 +1359,22 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
             //pubCloud("collision", cloud_torso, ik_frame_.c_str());
             pubCloud("collision", cloud, fixed_frame_);
 
-            std::cout << "updating collision mode with pc" << std::endl;
+            //std::cout << "updating collision mode with pc" << std::endl;
 
             tf::Transform root = collision_testing.kinematic_state->getRootTransform();
 
-            geometry_msgs::Transform root_msg;
+            //geometry_msgs::Transform root_msg;
 
             //! shift robot in planning env, does shift points in odom_combined or torso with it!
             //root.setOrigin(tf::Vector3(shifterx,shiftery,shifterz));
 
-            tf::transformTFToMsg(root, root_msg);
+            //tf::transformTFToMsg(root, root_msg);
 
-            std::cout << " ROOT TRANSFORM " << root_msg << std::endl;
+            //std::cout << " ROOT TRANSFORM " << root_msg << std::endl;
 
             //collision_testing.kinematic_state->getJointState("world_joint")->setJointStateValues(root);
 
-            std::cout << "collision_testing.kinematic_state->updateKinematicLinks();" << std::endl;
+            //std::cout << "collision_testing.kinematic_state->updateKinematicLinks();" << std::endl;
 
             collision_testing.kinematic_state->updateKinematicLinks();
 
@@ -1383,16 +1386,35 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
 
             collision_free.clear();
 
-            ROS_INFO("REACHABLE %zu", reachable.size());
+
             for (std::vector<tf::Pose>::iterator it = reachable.begin(); (it!=reachable.end()) && ros::ok(); ++it)
             {
-                std::cout << "tick" << std::endl;
+                //std::cout << "tick" << std::endl;
                 tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(*it);
                 if (get_ik(arm, in_ik_frame, result) == 1)
                 {
+
+                    tf::Transform wristy;
+                    wristy.setOrigin(tf::Vector3(0.18,0,0));
+                    wristy.setRotation(tf::Quaternion(0,0,0,1));
+
                     bool inCollision = collision_testing.inCollision(arm, result);
-                    if (!inCollision)
+                    if (!inCollision) {
                         collision_free.push_back(*it);
+
+                        tf::Stamped<tf::Pose> actPose;
+                        actPose.setData(in_ik_frame * wristy);
+                        actPose.frame_id_ = ik_frame_;
+                        actPose = getPoseIn("base_link",actPose);
+                        printf("\nbin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
+                        tf::Transform rel;
+                        rel.setOrigin(tf::Vector3(0.1,0,0));
+                        rel.setRotation(tf::Quaternion(0,0,0,1));
+                        actPose.setData(in_ik_frame * wristy * rel);
+                        actPose.frame_id_ = ik_frame_;
+                        actPose = getPoseIn("base_link",actPose);
+                        printf("bin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
+                    }
                 }
             }
 

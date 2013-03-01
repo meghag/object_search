@@ -236,7 +236,7 @@ void GraspPlanning::initGrasps()
 
        act.bb_min.push_back(tf::Vector3(-0.02,-0.09,-0.03));
        act.bb_max.push_back(tf::Vector3(0.18,0.09,0.03));
-      act.bb_full.push_back(false);*/
+      act.bb_full.push_back(false);
 
     act.bb_min.push_back(tf::Vector3(0.23,-0.05,-0.02));
     act.bb_max.push_back(tf::Vector3(0.24,-0.03,0.02));
@@ -256,7 +256,27 @@ void GraspPlanning::initGrasps()
 
     act.bb_min.push_back(tf::Vector3(-0.02,-0.09,-0.03));
     act.bb_max.push_back(tf::Vector3(0.18,0.09,0.03));
-    act.bb_full.push_back(false);
+    act.bb_full.push_back(false);*/
+
+           act.bb_min.push_back(tf::Vector3(0.23,-0.02,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.24,3.46945e-18,0.02));
+        act.bb_full.push_back(true);
+
+        act.bb_min.push_back(tf::Vector3(0.23,-3.46945e-18,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.24,0.02,0.02));
+        act.bb_full.push_back(true);
+
+        act.bb_min.push_back(tf::Vector3(0.18,-3.46945e-18,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.23,0.04,0.02));
+        act.bb_full.push_back(false);
+
+        act.bb_min.push_back(tf::Vector3(0.18,-0.04,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.23,3.46945e-18,0.02));
+        act.bb_full.push_back(false);
+
+        act.bb_min.push_back(tf::Vector3(-0.02,-0.06,-0.03));
+        act.bb_max.push_back(tf::Vector3(0.18,0.06,0.03));
+        act.bb_full.push_back(false);
 
     tf::Pose push;
     push.setOrigin(tf::Vector3(0.01,0,0));

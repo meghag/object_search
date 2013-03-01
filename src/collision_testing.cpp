@@ -42,7 +42,7 @@ void CollisionTesting::init(bool fromBag, std::string filename, std::string fixe
 
                 //std::vector<std::string> fixed_frame_names;
 
-                double shifterx = 0;
+                /*double shifterx = 0;
                 nh_.param<double>("shifterx", shifterx, 0);
                 double shiftery = 0;
                 nh_.param<double>("shiftery", shiftery, 0);
@@ -51,7 +51,7 @@ void CollisionTesting::init(bool fromBag, std::string filename, std::string fixe
 
                 ps.robot_state.multi_dof_joint_state.poses[0].position.x += shifterx;
                 ps.robot_state.multi_dof_joint_state.poses[0].position.y += shiftery;
-                ps.robot_state.multi_dof_joint_state.poses[0].position.z += shifterz;
+                ps.robot_state.multi_dof_joint_state.poses[0].position.z += shifterz;*/
 
                 tf::Pose tmp;
 
@@ -301,7 +301,7 @@ bool CollisionTesting::inCollision(int arm, double jointState[])
 
     bool collision = collision_models->isKinematicStateInCollision(*kinematic_state);
 
-    ROS_INFO("Publishin collision markers? %s", (publish_markers ? "true" : "false") );
+    //ROS_INFO("Publishin collision markers? %s", (publish_markers ? "true" : "false") );
 
     if (publish_markers)
     {
@@ -334,7 +334,7 @@ bool CollisionTesting::inCollision(int arm, double jointState[])
                 color,
                 ros::Duration(100));
 
-        ROS_INFO("Publishin collision markers %zu", sum_arr.markers.size());
+        //ROS_INFO("Publishin collision markers %zu", sum_arr.markers.size());
 
         vis_marker_array_publisher_.publish(sum_arr);
 
