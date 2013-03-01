@@ -258,6 +258,11 @@ void GraspPlanning::initGrasps()
     act.bb_max.push_back(tf::Vector3(0.18,0.09,0.03));
     act.bb_full.push_back(false);
 
+    tf::Pose push;
+    push.setOrigin(tf::Vector3(0.01,0,0));
+    push.setRotation(tf::Quaternion(0,0,0,1));
+    act.approach.push_back(push);
+
     act.name = "push_forward";
 
     /*

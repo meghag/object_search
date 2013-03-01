@@ -7,15 +7,15 @@
    respawn="false" output="screen" />
 
   <node name="spawn_object1" pkg="gazebo" type="spawn_model" 
-   args="-urdf -file $(find gazebo_worlds)/objects/coke_can.urdf -model coke_can -x 0.6 -y 0.0 -z 1.0" 
+   args="-urdf -file $(find gazebo_worlds)/objects/coke_can.urdf -model coke_can -x 0.55 -y 0.0 -z 1.0" 
    respawn="false" output="screen" />
    
    <node name="spawn_object2" pkg="gazebo" type="spawn_model" 
-   args="-urdf -file $(find tum_os)/objects/blue_box_new.urdf -model blue_box -x 0.75 -y 0.2 -z 1.0" 
+   args="-urdf -file $(find tum_os)/objects/blue_box_new.urdf -model blue_box -x 0.55 -y 0.2 -z 1.0" 
    respawn="false" output="screen" />
    
    <node name="spawn_object3" pkg="gazebo" type="spawn_model" 
-   args="-urdf -file $(find tum_os)/objects/green_box.urdf -model green_box -x 0.75 -y -0.2 -z 1.0" 
+   args="-urdf -file $(find tum_os)/objects/green_box.urdf -model green_box -x 0.55 -y -0.2 -z 1.0" 
    respawn="false" output="screen" />
 
   <!-- parameters that give you reasonable physics as well as good speed -->

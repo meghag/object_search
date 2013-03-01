@@ -177,12 +177,13 @@ public:
 void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked)
 {
     // min coordinates of aabb
-    std::vector<tf::Vector3> bb_min;
+    //std::vector<tf::Vector3> bb_min;
     // max coordinates of aabb
-    std::vector<tf::Vector3> bb_max;
+    //std::vector<tf::Vector3> bb_max;
     // should this bounding box be empty => true or should contain a point => false
-    std::vector<bool> bb_full;
+    //std::vector<bool> bb_full;
 
+    /*
     double xShift = .18; // distance toolframe to wrist, we work in wrist later for ik etc
 
     // we want to see some points centered between the grippers
@@ -208,9 +209,69 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pos
     bb_min.push_back(tf::Vector3(xShift - 0.2 ,-0.09,-.03));
     bb_max.push_back(tf::Vector3(xShift + 0.00, 0.09, .03));
     bb_full.push_back(false);
+    */
+
+    BoxSet act;
+
+    if(0)
+    {
+        //push forward open grip
+        act.bb_min.push_back(tf::Vector3(0.23,-0.05,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.24,-0.03,0.02));
+        act.bb_full.push_back(true);
+
+        act.bb_min.push_back(tf::Vector3(0.23,0.03,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.24,0.05,0.02));
+        act.bb_full.push_back(true);
+
+        act.bb_min.push_back(tf::Vector3(0.18,0.03,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.23,0.09,0.02));
+        act.bb_full.push_back(false);
+
+        act.bb_min.push_back(tf::Vector3(0.18,-0.09,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.23,-0.03,0.02));
+        act.bb_full.push_back(false);
+
+        act.bb_min.push_back(tf::Vector3(-0.02,-0.09,-0.03));
+        act.bb_max.push_back(tf::Vector3(0.18,0.09,0.03));
+        act.bb_full.push_back(false);
+    }
+
+
+    if (1)
+    {
+        //push forward closed gripper
+        act.bb_min.push_back(tf::Vector3(0.23,-0.02,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.24,3.46945e-18,0.02));
+        act.bb_full.push_back(true);
+
+        act.bb_min.push_back(tf::Vector3(0.23,-3.46945e-18,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.24,0.02,0.02));
+        act.bb_full.push_back(true);
+
+        act.bb_min.push_back(tf::Vector3(0.18,-3.46945e-18,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.23,0.04,0.02));
+        act.bb_full.push_back(false);
+
+        act.bb_min.push_back(tf::Vector3(0.18,-0.04,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.23,3.46945e-18,0.02));
+        act.bb_full.push_back(false);
+
+        act.bb_min.push_back(tf::Vector3(-0.02,-0.06,-0.03));
+        act.bb_max.push_back(tf::Vector3(0.18,0.06,0.03));
+        act.bb_full.push_back(false);
+    }
+
+
+    tf::Pose push;
+    push.setOrigin(tf::Vector3(0.01,0,0));
+    push.setRotation(tf::Quaternion(0,0,0,1));
+    //act.approach.push_back(push);
+
+    //act.name = "push_forward";
 
     std::vector<size_t> bb_cnt;
-    bb_cnt.resize(bb_min.size());
+    bb_cnt.resize(act.bb_min.size());
 
     // for each grasp
     for (std::vector<tf::Pose>::iterator it = unchecked.begin(); it!=unchecked.end(); ++it)
@@ -230,12 +291,12 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pos
 
             // check each defined bounding box
             //for (int k = 0; (k < bb_min.size()) && good; ++k)
-            for (size_t k = 0; (k < bb_min.size()); ++k)
+            for (size_t k = 0; (k < act.bb_min.size()); ++k)
             {
-                if (inside(curr, bb_min[k], bb_max[k]))
+                if (inside(curr, act.bb_min[k], act.bb_max[k]))
                 {
                     bb_cnt[k]++;
-                    if (!bb_full[k])
+                    if (!act.bb_full[k])
                         good = false;
                 }
 
@@ -243,9 +304,9 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pos
         }
 
         //std::cout << std::endl;
-        for (size_t j = 0; j < bb_min.size(); j++)
+        for (size_t j = 0; j < act.bb_min.size(); j++)
         {
-            if (bb_full[j] && (bb_cnt[j] < 10))
+            if (act.bb_full[j] && (bb_cnt[j] < 10))
                 good = false;
         }
 
@@ -893,7 +954,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
         pcl::PointXYZ pt;
         pt.x = act.getOrigin().x();
         pt.y = act.getOrigin().y();
-        pt.z = act.getOrigin().z() * 4;
+        pt.z = act.getOrigin().z();
 
         object_cloud->points.push_back(pt);
 
@@ -950,7 +1011,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
     //tf::Vector3 bb_max(-.82,-6.7,1.2);
 
     tf::Vector3 bb_min(0,0,0.03);
-    tf::Vector3 bb_max(.5,.5,.4);
+    tf::Vector3 bb_max(.75,.75,.4);
 
     getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
 
@@ -1124,16 +1185,25 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
         //! Dangerous, we're using tf now for a test live
         fixed_to_ik = getPose(fixed_frame_, ik_frame_);
 
-        for (int k =0; k < 30000; k++)
+        for (int k =0; k < 100000; k++)
         {
             random.push_back(vdc_pose_bound(bb_min,bb_max,k));
         }
 
         ROS_INFO("tick");
         // should have points of cluster we want to grasp inside
-        checkGraspsIK(arm,fixed_to_ik,random,ik_checked);
-        ROS_INFO("checked for reachability, %zu reachable grasp candidates", ik_checked.size());
-        checkGrasps(clusters[max_idx],ik_checked,filtered);
+
+        //check ik first
+        if (1)
+        {
+            checkGraspsIK(arm,fixed_to_ik,random,ik_checked);
+            ROS_INFO("checked for reachability, %zu reachable grasp candidates", ik_checked.size());
+            checkGrasps(clusters[max_idx],ik_checked,filtered);
+        }
+        else
+        {
+            checkGrasps(clusters[max_idx],random,filtered);
+        }
         //checkGrasps(clusters[max_idx],random,filtered);
         std::cout << "number of filtered grasps : " << filtered.size() << " out of " << random.size() << std::endl;
         // should not collide with other points either
@@ -1146,7 +1216,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
 
         std::cout << "number of reachable grasps : " << reachable.size() << " out of " << checked.size() << std::endl;
 
-        pub_belief("vdc_poses",checked);
+        pub_belief("checked_grasps",checked);
 
         pub_belief("reachable_grasps",reachable);
 
@@ -1188,9 +1258,14 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
             in RPY [-0.015, -0.000, -1.772]
             */
 
-        tf::Transform tum_os_table_to_odom_combined;
-        tum_os_table_to_odom_combined.setOrigin(tf::Vector3(0.538, -0.053, 0.730));
-        tum_os_table_to_odom_combined.setRotation(tf::Quaternion(-0.005, 0.006, -0.774, 0.633));
+        tf::Stamped<tf::Transform> tum_os_table_to_odom_combined;
+        //tum_os_table_to_odom_combined.setOrigin(tf::Vector3(0.538, -0.053, 0.730));
+        //tum_os_table_to_odom_combined.setRotation(tf::Quaternion(-0.005, 0.006, -0.774, 0.633));
+        tum_os_table_to_odom_combined.setOrigin(tf::Vector3(0,0,0));
+        tum_os_table_to_odom_combined.setRotation(tf::Quaternion(0,0,0,1));
+        tum_os_table_to_odom_combined.frame_id_ = "tum_os_table";
+        tum_os_table_to_odom_combined = getPoseIn("odom_combined",tum_os_table_to_odom_combined);
+        //!TODO
 
         collision_testing.setCollisionFrame("odom_combined");
 
@@ -1559,7 +1634,8 @@ int main(int argc,char **argv)
 
     if (!data_from_bag)
     {
-        getCloud(cloud, fixed_frame_, ros::Time::now() - ros::Duration(1));
+        //getCloud(cloud, fixed_frame_, ros::Time::now() - ros::Duration(1));
+        getCloud(cloud, fixed_frame_, ros::Time::now());
         fixed_to_ik = getPose(fixed_frame_, ik_frame_);
         sensor_in_fixed = getPose(fixed_frame_,rgb_optical_frame_);
 
