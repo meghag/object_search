@@ -31,6 +31,7 @@
   <depend package="kinematics_base"/>
   <depend package="pr2_arm_kinematics"/>
   <depend package="pr2_arm_navigation_perception"/>
+  <depend package="pr2_common_action_msgs"/>
   <depend package="pr2_msgs"/>
   <export>
     <cpp cflags="-I${prefix}/include/" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lgpc"/>
