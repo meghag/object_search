@@ -23,6 +23,8 @@
 
 #include <tum_os/Clusters.h>
 
+#include "../include/robot_arm.h"
+
 extern "C" {
 #include <gpcl/gpc.h>
 }
@@ -62,7 +64,7 @@ tf::TransformBroadcaster *br = 0;
 
 
 template <class T>
-void pubCloud(const std::string &topic_name, T &cloud, std::string frame_id = fixed_frame_);
+void pubCloud(const std::string &topic_name, const T &cloud, std::string frame_id = fixed_frame_);
 
 //void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::string frame_id = fixed_frame_);
 
@@ -601,7 +603,7 @@ std::map<std::string, ros::Publisher*> cloud_publishers;
 
 //void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::string frame_id = "/map")
 template <class T>
-void pubCloud(const std::string &topic_name, T &cloud, std::string frame_id)
+void pubCloud(const std::string &topic_name, const T &cloud, std::string frame_id)
 {
     ros::Publisher *cloud_pub;
 
@@ -1022,9 +1024,9 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
     //tf::Stamped<tf::Pose> sensor_in_fixed = getPose(fixed_frame_.c_str(),rgb_optical_frame_.c_str());
 
 
-    TableTopObject myCluster(sensor_in_fixed.getOrigin(), bb_min.z(), cloud_in_box);
+    TableTopObject full_environment(sensor_in_fixed.getOrigin(), bb_min.z(), cloud_in_box);
 
-    //pubCloud("cluster_volume", myCluster.getAsCloud() , "/map");
+    pubCloud("cluster_volume", full_environment.getAsCloud() , fixed_frame_);
 
     ROS_INFO("before creating samples");
     std::vector<tf::Pose> object_belief;
@@ -1056,7 +1058,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
     std::vector<tf::Pose> object_posterior_belief;
     for (std::vector<tf::Pose>::iterator it = object_belief.begin(); it!=object_belief.end(); it++)
     {
-        if (obj.checkCoveredPointcloud(*it,identity,myCluster))
+        if (obj.checkCoveredPointcloud(*it,identity,full_environment))
             object_posterior_belief.push_back(*it);
     }
 
@@ -1161,6 +1163,10 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
         // init collision testing here so that we have robot model up to date
         CollisionTesting collision_testing(*nh_);
         collision_testing.init(data_from_bag, "planning_scene_res.bag",fixed_frame_);
+
+        // full environment including shadows
+        CollisionTesting ct_full_env(*nh_);
+        ct_full_env.init(data_from_bag, "planning_scene_res.bag",fixed_frame_);
 
         transforms_from_planning_response_mutex.lock();
         transforms_from_planning_response.clear();
@@ -1270,6 +1276,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
         //!TODO
 
         collision_testing.setCollisionFrame("odom_combined");
+        ct_full_env.setCollisionFrame("odom_combined");
 
         {
 
@@ -1324,6 +1331,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
             }
         }
 
+        ct_full_env.addPointCloud( full_environment.getAsCloud(), .01, &tum_os_table_to_odom_combined);
 
         //pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_torso (new pcl::PointCloud<pcl::PointXYZ>);
 
@@ -1333,6 +1341,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
 
         //collision_testing.addPointCloud(cloud,0.01);
         collision_testing.updateCollisionModel();
+        ct_full_env.updateCollisionModel();
 
 
         ROS_INFO("REACHABLE %zu", reachable.size());
@@ -1377,8 +1386,10 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
             //std::cout << "collision_testing.kinematic_state->updateKinematicLinks();" << std::endl;
 
             collision_testing.kinematic_state->updateKinematicLinks();
+            ct_full_env.kinematic_state->updateKinematicLinks();
 
             collision_testing.publish_markers = true;
+            ct_full_env.publish_markers = true;
 
             std::vector<double> result;
             result.resize(7);
@@ -1398,22 +1409,30 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
                     wristy.setOrigin(tf::Vector3(0.18,0,0));
                     wristy.setRotation(tf::Quaternion(0,0,0,1));
 
-                    bool inCollision = collision_testing.inCollision(arm, result);
-                    if (!inCollision) {
+                    //bool inCollision = collision_testing.inCollision(arm, result);
+                    bool inCollision = ct_full_env.inCollision(arm, result);
+                    if (!inCollision)
+                    {
                         collision_free.push_back(*it);
 
-                        tf::Stamped<tf::Pose> actPose;
+                        tf::Stamped<tf::Pose> actPose, approach, push;
                         actPose.setData(in_ik_frame * wristy);
                         actPose.frame_id_ = ik_frame_;
-                        actPose = getPoseIn("base_link",actPose);
-                        printf("\nbin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
+                        //actPose = getPoseIn("base_link",actPose);
+                        //printf("\nbin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
+                        approach = getPoseIn("torso_lift_link",actPose);
                         tf::Transform rel;
                         rel.setOrigin(tf::Vector3(0.1,0,0));
                         rel.setRotation(tf::Quaternion(0,0,0,1));
                         actPose.setData(in_ik_frame * wristy * rel);
                         actPose.frame_id_ = ik_frame_;
-                        actPose = getPoseIn("base_link",actPose);
-                        printf("bin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
+                        //actPose = getPoseIn("base_link",actPose);
+                        //printf("bin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
+                        push = getPoseIn("torso_lift_link",actPose);
+                        //RobotArm::getInstance(0)->move_arm_via_ik(approach);
+                        //RobotArm::getInstance(0)->move_arm_via_ik(push);
+                        //RobotArm::getInstance(0)->move_arm_via_ik(approach);
+                        //exit(0);
                     }
                 }
             }
@@ -1582,7 +1601,7 @@ void tf_broadcaster_thread()
        */
 }
 
-
+//include "../include/robothead.h"
 
 int main(int argc,char **argv)
 {
@@ -1611,6 +1630,33 @@ int main(int argc,char **argv)
         data_bag_name = argv[2];
     }
 
+    //RobotHead()
+
+    // test arm motion
+    std::vector<double> jstate[2];
+    jstate[0].resize(7);
+    jstate[1].resize(7);
+
+    jstate[0][0] = -1.6168837569724208;
+    jstate[0][1] =  0.15550442262485537;
+    jstate[0][2] =  -1.25;
+    jstate[0][3] =  -2.1222118472906528;
+    jstate[0][4] =  -0.90575412503025221;
+    jstate[0][5] =  -1.3540678462623723;
+    jstate[0][6] =  1.7130631649684915;
+
+    jstate[1][0] = 1.5371426009988673;
+    jstate[1][1] =  0.15318173630933338;
+    jstate[1][2] =  1.25;
+    jstate[1][3] =  -2.1017963799253305;
+    jstate[1][4] =  0.66713731189146697;
+    jstate[1][5] =  -0.7240180626857029;
+    jstate[1][6] =  -10.049029141041331;
+
+    RobotArm::getInstance(0)->move_arm_joint(jstate[0]);
+    RobotArm::getInstance(1)->move_arm_joint(jstate[1]);
+
+    //exit(0);
 
     //test_vdc();
 

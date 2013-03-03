@@ -49,7 +49,7 @@ rosbuild_add_executable(move_head_manual src/move_head_manual.cpp)
 
 #rosbuild_add_executable(euclidean_seg src/euclidean_segmentation.cpp)
 
-rosbuild_add_executable(pointcloud_to_hull src/TableTopObject.cpp src/pointcloud_to_hull.cpp src/kinematics.cpp src/collision_testing.cpp src/grasp_planning.cpp src/van_der_corput.cpp)
+rosbuild_add_executable(pointcloud_to_hull src/TableTopObject.cpp src/pointcloud_to_hull.cpp src/kinematics.cpp src/collision_testing.cpp src/grasp_planning.cpp src/van_der_corput.cpp src/robot_arm.cpp)
 target_link_libraries(pointcloud_to_hull gpcl octomap octomath)
 
 rosbuild_add_executable(planner src/planner.cpp src/TableTopObject.cpp)

@@ -18,11 +18,22 @@
 // ugly forward decl. make a class
 int get_ik(const int arm, const tf::Pose targetPose, std::vector<double> &jointValues);
 
+RobotArm *RobotArm::instance[] = {0L,0L};
+
+RobotArm* RobotArm::getInstance(int side)
+{
+    if (!instance[side])
+        instance[side] = new RobotArm(side);
+    return instance[side];
+}
+
 
 RobotArm::RobotArm(int side)
 {
     side_ = side;
-    traj_client_ = new actionlib::SimpleActionClient< pr2_controllers_msgs::JointTrajectoryAction >((side == 0) ? "r_arm_controller/joint_trajectory_action" : "l_arm_controller/joint_trajectory_action", true);
+    traj_client_ = new actionlib::SimpleActionClient< pr2_controllers_msgs::JointTrajectoryAction >((side == 0) ? "/r_arm_controller/joint_trajectory_action" : "/l_arm_controller/joint_trajectory_action", true);
+    ROS_INFO("WAITING FOR SERVER TO START");
+    traj_client_->waitForServer();
 }
 
 RobotArm::~RobotArm()
@@ -35,15 +46,18 @@ int
 RobotArm::move_arm_via_ik(tf::Pose goalPose)
 {
     std::vector<double> ik_result;
-    get_ik(side_, goalPose, ik_result);
+    int error_code = get_ik(side_, goalPose, ik_result);
+    ROS_INFO("ARM_IK ERROR CODE %i", error_code);
     move_arm_joint(ik_result);
+    return 0;
 }
 
 int
 RobotArm::move_arm_joint(std::vector<double> jointState)
 {
-    // 3 seconds, thats slooow
-    startTrajectory(createTrajectory(jointState,3), true);
+    // 1 second, rather fast
+    startTrajectory(createTrajectory(jointState,1), true);
+    return 0;
 }
 
 pr2_controllers_msgs::JointTrajectoryGoal RobotArm::createTrajectory(std::vector<double> jointState, double dur)
@@ -84,6 +98,7 @@ pr2_controllers_msgs::JointTrajectoryGoal RobotArm::createTrajectory(std::vector
     {
         goal.trajectory.points[ind].positions[j] = jointState[j];
         goal.trajectory.points[ind].velocities[j] = 0.0;
+        //std::cout << "j  : " <<  goal.trajectory.points[ind].positions[j] << std::endl;
     }
     // To be reached 1 second after starting along the trajectory
     goal.trajectory.points[ind].time_from_start = ros::Duration(dur);
@@ -97,12 +112,15 @@ void RobotArm::startTrajectory(pr2_controllers_msgs::JointTrajectoryGoal goal, b
 {
     goal.trajectory.header.stamp = ros::Time::now(); // start right away
 
+    //ROS_INFO("SENDING ARM GOAL");
+
     traj_client_->sendGoal(goal);
 
     if (waitForFinish)
     {
         try
         {
+            ROS_INFO("WAITING FOR ARM TO REACH GOAL..");
             traj_client_->waitForResult();
         }
         catch ( boost::thread_interrupted ti )

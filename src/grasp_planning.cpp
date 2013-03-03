@@ -366,7 +366,7 @@ void GraspPlanning::visualizeGrasp(size_t grasp_type, std::string frame_id, int 
         marker.color.g = grasp.bb_full[i] ? 1.0 : 0.0;
         marker.color.b = 0.0;
 
-        if (highlight == i)
+        if (highlight == (int) i)
         {
             marker.color.a = 0.75;
         }

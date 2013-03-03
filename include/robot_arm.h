@@ -9,7 +9,7 @@ class RobotArm
 {
 public:
 
-    RobotArm(int side);
+    static RobotArm* getInstance(int side = 0);
 
     // pose has to be in ik frame, usually torso_lift_link, then goes through ik and then joint trajectory
     int move_arm_via_ik(tf::Pose goalPose);
@@ -23,11 +23,15 @@ public:
 
 private:
 
+    RobotArm(int side);
+
     ~RobotArm();
 
     int side_;
 
     actionlib::SimpleActionClient< pr2_controllers_msgs::JointTrajectoryAction > *traj_client_;
+
+    static RobotArm *instance[];
 
 };
 

@@ -53,7 +53,7 @@ void keyboardLoop()
     ros::Rate rt(1);
 
     int idx = 0; // which box do we edit
-    int coordinate = 0; // x y or z ? which coordinate do we affect?
+    //int coordinate = 0; // x y or z ? which coordinate do we affect?
 
 
     //puts("Reading from keyboard");
@@ -157,7 +157,7 @@ void keyboardLoop()
             dirty = true;
             break;
 
-        case KEYCODE_X:
+        /*case KEYCODE_X:
             coordinate = 0;
             dirty = true;
             break;
@@ -170,14 +170,14 @@ void keyboardLoop()
         case KEYCODE_Z:
             coordinate = 2;
             dirty = true;
-            break;
+            break;*/
 
         }
 
         if (idx < 0)
             idx = gp.grasps[0].bb_min.size() - 1;
 
-        if (idx >= gp.grasps[0].bb_min.size())
+        if (idx >= (int) gp.grasps[0].bb_min.size())
             idx = 0;
 
         std::cout << idx << std::endl;
