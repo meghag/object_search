@@ -659,6 +659,14 @@ void pubCloud(const std::string &topic_name, const T &cloud, std::string frame_i
     //ROS_INFO("published frame %s %i x %i points on %s", out.header.frame_id.c_str(), out.height, out.width, topic_name.c_str());
 }
 
+
+void pubCloudWait(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::string frame_id, ros::Duration waitTime)
+{
+    waitTime.sleep();
+    return pubCloud(topic_name,cloud,frame_id);
+}
+
+
 void getPointsInBox(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr inBox, const tf::Vector3 min, const tf::Vector3 max)
 {
     Eigen::Vector4f min_pt, max_pt;
@@ -993,7 +1001,8 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
 
     pub_belief("vdc_poses",object_posterior_belief);
 
-    if (object_posterior_belief.size() == 0) {
+    if (object_posterior_belief.size() == 0)
+    {
         ROS_INFO("OBJECT A POSTERIORI BELIEF EMPTY");
         return;
     }
@@ -1004,7 +1013,7 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
     //! get clusters from euclidian clustering
     tum_os::Clusters clusters_msg;
     {
-        pubCloud("object_cloud", cloud_in_box, fixed_frame_.c_str());
+        boost::thread t(&pubCloudWait,"object_cloud", cloud_in_box, fixed_frame_.c_str(),ros::Duration(0.1));
         //! get the clusters
         std::cout << "Waiting for clusters." << std::endl;
         clusters_msg  = *(ros::topic::waitForMessage<tum_os::Clusters>("/clusters"));
@@ -1024,15 +1033,22 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
     int max_idx = -1;
     double max_perc = 0;
     std::vector<TableTopObject*> obj_excluding;
+    std::vector<TableTopObject*> obj_only;
     percentages.resize(clusters.size());
     for (size_t i = 0; i < clusters.size(); i ++)
     {
         TableTopObject *act = new TableTopObject();
+
+        TableTopObject *act_inv = new TableTopObject();
         for (size_t j = 0; j < clusters.size(); j ++)
         {
             if (j != i)
+            {
+                std::cout << "Cluster j size" << clusters[j]->points.size() << std::endl;
                 act->addPointCloud(sensor_in_fixed.getOrigin(), bb_min.z(), clusters[j]);
+            }
         }
+
         obj_excluding.push_back(act);
         size_t num_remaining = 0;
         for (std::vector<tf::Pose>::iterator it = object_posterior_belief.begin(); it!=object_posterior_belief.end(); it++)
@@ -1040,6 +1056,25 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
             if (obj.checkCoveredPointcloud(*it,identity,*act))
                 num_remaining++;
         }
+
+        std::cout << "REMAINIGN " << num_remaining << std::endl;
+
+        {
+
+            std::cout << "Cluster size" << clusters[i]->points.size() << std::endl;
+            act_inv->addPointCloud(sensor_in_fixed.getOrigin(), bb_min.z(), clusters[i]);
+            obj_only.push_back(act_inv);
+            size_t num_remaining_inv = 0;
+            for (std::vector<tf::Pose>::iterator it = object_posterior_belief.begin(); it!=object_posterior_belief.end(); it++)
+            {
+                if (obj.checkCoveredPointcloud(*it,identity,*act_inv))
+                    num_remaining_inv++;
+            }
+
+            std::cout << "REMAINIGN INVERSE" << num_remaining_inv << std::endl;
+
+        }
+
 
         double percentage = (object_posterior_belief.size() == 0 ? 1 : (object_posterior_belief.size() - num_remaining) / (double)object_posterior_belief.size());
 
@@ -1303,68 +1338,102 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
         ct_full_env.publish_markers = true;
 
 
-        collision_free.clear();
-
-
-        for (std::vector<tf::Pose>::iterator it = reachable.begin(); (it!=reachable.end()) && ros::ok(); ++it)
+        //while (ros::ok())
         {
-            //std::cout << "tick" << std::endl;
-            // get this from grip model
 
 
-            tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(*it);
+            collision_free.clear();
 
-            tf::Pose in_ik_frame_push = in_ik_frame * rel;
+            int min_remaining = object_posterior_belief.size() + 1;
 
-            if ((get_ik(arm, in_ik_frame, result) == 1)
-                    && (get_ik(arm, in_ik_frame_push, result_push) == 1))
+
+            for (std::vector<tf::Pose>::iterator it = reachable.begin(); (it!=reachable.end()) && ros::ok(); ++it)
             {
+                //std::cout << "tick" << std::endl;
+                // get this from grip model
 
 
-                //bool inCollision = collision_testing.inCollision(arm, result);
-                ROS_INFO("pre");
-                bool inCollision = ct_full_env.inCollision(arm, result);
+                tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(*it);
 
-                inCollision |= collision_testing.inCollision(arm, result_push);
+                tf::Pose in_ik_frame_push = in_ik_frame * rel;
 
-                ROS_INFO("post");
-                if (!inCollision)
+                if ((get_ik(arm, in_ik_frame, result) == 1)
+                        && (get_ik(arm, in_ik_frame_push, result_push) == 1))
                 {
-                    collision_free.push_back(*it);
 
-                    tf::Stamped<tf::Pose> actPose, approach, push;
-                    actPose.setData(in_ik_frame * wristy);
-                    actPose.frame_id_ = ik_frame_;
-                    //actPose = getPoseIn("base_link",actPose);
-                    //printf("\nbin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
-                    approach = getPoseIn("torso_lift_link",actPose);
-                    actPose.setData(in_ik_frame * wristy * rel);
-                    actPose.frame_id_ = ik_frame_;
-                    //actPose = getPoseIn("base_link",actPose);
-                    //printf("bin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
-                    push = getPoseIn("torso_lift_link",actPose);
-                    std::cout << push.getOrigin().z() << std::endl;
 
-                    if (push.getOrigin().z() < lowest_z)
+                    //bool inCollision = collision_testing.inCollision(arm, result);
+                    ROS_INFO("pre");
+                    bool inCollision = ct_full_env.inCollision(arm, result);
+
+                    //ros::Duration(0.3).sleep();
+
+                    inCollision |= collision_testing.inCollision(arm, result_push);
+
+                    ROS_INFO("post");
+                    if (!inCollision)
                     {
-                        lowest_idx = collision_free.size() - 1;
-                        lowest_z = push.getOrigin().z() ;
-                    }
 
-                    //ros::Duration(0.2).sleep();
-                    //RobotArm::getInstance(0)->move_arm_via_ik(approach);
-                    //RobotArm::getInstance(0)->move_arm_via_ik(push);
-                    //RobotArm::getInstance(0)->move_arm_via_ik(approach);
-                    //exit(0);
+                        tf::Stamped<tf::Pose> actPose, approach, push;
+                        actPose.setData(in_ik_frame * wristy);
+                        actPose.frame_id_ = ik_frame_;
+                        //actPose = getPoseIn("base_link",actPose);
+                        //printf("\nbin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
+                        approach = getPoseIn("torso_lift_link",actPose);
+                        actPose.setData(in_ik_frame * wristy * rel);
+                        actPose.frame_id_ = ik_frame_;
+                        //actPose = getPoseIn("base_link",actPose);
+                        //printf("bin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
+                        push = getPoseIn("torso_lift_link",actPose);
+                        std::cout << push.getOrigin().z() << std::endl;
+
+                        if (push.getOrigin().z() < lowest_z)
+                        {
+                            lowest_idx = collision_free.size();
+                            lowest_z = push.getOrigin().z() ;
+                        }
+
+                        //!check effect of pushing
+                        tf::Vector3 push_vector = push.getOrigin() - approach.getOrigin();
+                        std::cout << "PUSH VECTOR" << push_vector.x() << " "<< push_vector.y() << " "<< push_vector.z() << std::endl;
+
+                        tf::Transform push_transform;
+                        push_transform.setOrigin(tf::Vector3(push_vector.x(),push_vector.y(),0));
+                        push_transform.setRotation(tf::Quaternion(0,0,0,1));
+
+                        size_t num_remaining_inv = 0;
+                        for (std::vector<tf::Pose>::iterator it = object_posterior_belief.begin(); it!=object_posterior_belief.end(); it++)
+                            {
+                            if (obj.checkCoveredPointcloud(*it,push_transform,*obj_only[max_idx]))
+                                num_remaining_inv++;
+                            }
+                        std::cout << "REMAINING " << num_remaining_inv << " of " << object_posterior_belief.size() << std::endl;
+
+
+                        if (num_remaining_inv <= min_remaining)
+                        {
+                            if (num_remaining_inv < min_remaining)
+                                collision_free.clear();
+                            collision_free.push_back(*it);
+                        }
+
+
+                        //ros::Duration(0.2).sleep();
+                        //RobotArm::getInstance(0)->move_arm_via_ik(approach);
+                        //RobotArm::getInstance(0)->move_arm_via_ik(push);
+                        //RobotArm::getInstance(0)->move_arm_via_ik(approach);
+                        //exit(0);
+                    }
                 }
             }
+
+            std::cout << "number of collision free grasps : " << collision_free.size() << " out of " << reachable.size() << std::endl;
+
         }
 
-        std::cout << "number of collision free grasps : " << collision_free.size() << " out of " << reachable.size() << std::endl;
+        //exit(0);
 
-        rt.sleep();
-
-
+        //take a random grasp for debugging
         lowest_idx = ((size_t)ros::Time::now().toSec()) % collision_free.size();
 
         if (lowest_idx != -1)
@@ -1378,16 +1447,21 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
             tf::Stamped<tf::Pose> actPose, approach, push;
             actPose.setData(in_ik_frame * wristy);
             actPose.frame_id_ = ik_frame_;
-
             approach = getPoseIn("torso_lift_link",actPose);
+
             actPose.setData(in_ik_frame * wristy * rel);
             actPose.frame_id_ = ik_frame_;
-
             push = getPoseIn("torso_lift_link",actPose);
+
             std::cout << push.getOrigin().z() << std::endl;
-            RobotArm::getInstance(0)->move_arm_via_ik(approach);
-            RobotArm::getInstance(0)->move_arm_via_ik(push);
-            RobotArm::getInstance(0)->move_arm_via_ik(approach);
+            RobotArm::getInstance(0)->move_arm_joint(result);
+            ros::Duration(1).sleep();
+            ros::Duration(1).sleep();
+            RobotArm::getInstance(0)->move_arm_joint(result_push);
+            RobotArm::getInstance(0)->move_arm_joint(result);
+            //RobotArm::getInstance(0)->move_arm_via_ik(approach);
+            //RobotArm::getInstance(0)->move_arm_via_ik(push);
+            //RobotArm::getInstance(0)->move_arm_via_ik(approach);
 
         }
 
@@ -1507,9 +1581,8 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
     }
     ROS_INFO("samples created");
 
-    while (ros::ok()) {
-
-        reset_arms();
+    while (ros::ok())
+    {
 
         if (!data_from_bag)
             getCloud(cloud, fixed_frame_, ros::Time::now());
@@ -1523,6 +1596,8 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
 
         apriori_belief = aposteriori_belief;
         aposteriori_belief.clear();
+
+        reset_arms();
 
     }
 
