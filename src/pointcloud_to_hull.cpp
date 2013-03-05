@@ -1069,7 +1069,9 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
     pub_belief("vdc_poses",object_posterior_belief);
 
     std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr > clusters;
+    std::vector<double> percentages;
 
+    //! get clusters from euclidian clustering
     tum_os::Clusters clusters_msg;
     {
         pubCloud("object_cloud", cloud_in_box, fixed_frame_.c_str());
@@ -1106,6 +1108,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
     int max_idx = -1;
     double max_perc = 0;
     std::vector<TableTopObject*> obj_excluding;
+    percentages.resize(clusters.size());
     for (size_t i = 0; i < clusters.size(); i ++)
     {
         TableTopObject *act = new TableTopObject();
@@ -1134,6 +1137,8 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
             max_idx = i;
         }
 
+        percentages[i] = percentage;
+
         for (size_t j = 0; j < clusters[i]->points.size(); j++)
         {
             pcl::PointXYZRGB pt;
@@ -1156,6 +1161,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
     //! get the pose from fixed to ik
     //tf::Stamped<tf::Pose> fixed_to_ik = getPose(fixed_frame_, ik_frame_);
     //tf::Stamped<tf::Pose> fixed_to_ik = getPose(fixed_frame_, ik_frame_);
+
 
     //!check for the best object to remove, if we have one
     if (max_idx >= 0)
@@ -1187,15 +1193,15 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
         tf::Vector3 cluster_min, cluster_max;
 
         minmax3d(cluster_min, cluster_max, clusters[max_idx]);
-        cluster_min -= tf::Vector3(.1,.1,.1);
-        cluster_max += tf::Vector3(.1,.1,.1);
+        cluster_min -= tf::Vector3(.2,.2,0);
+        cluster_max += tf::Vector3(.2,.2,.2);
 
         //! Dangerous, we're using tf now for a test live
         fixed_to_ik = getPose(fixed_frame_, ik_frame_);
 
         for (int k =0; k < 100000; k++)
         {
-            random.push_back(vdc_pose_bound(bb_min,bb_max,k));
+            random.push_back(vdc_pose_bound(cluster_min,cluster_max,k));
         }
 
         ROS_INFO("tick");
@@ -1345,8 +1351,30 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
 
 
         ROS_INFO("REACHABLE %zu", reachable.size());
-        while (ros::ok())
+
+
+        tf::Transform wristy;
+        wristy.setOrigin(tf::Vector3(0.18,0,0));
+        wristy.setRotation(tf::Quaternion(0,0,0,1));
+
+        std::vector<double> result;
+        result.resize(7);
+        std::fill( result.begin(), result.end(), 0 );
+
+
+        std::vector<double> result_push;
+        result_push.resize(7);
+        std::fill( result_push.begin(), result_push.end(), 0 );
+
+        int lowest_idx = -1;
+        double lowest_z = 1000;
+
+        tf::Transform rel;
+        rel.setOrigin(tf::Vector3(0.1,0,0));
+        rel.setRotation(tf::Quaternion(0,0,0,1));
+        //while (ros::ok())
         {
+
 
 
             /*double shifterx = 0;
@@ -1355,7 +1383,6 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
             nh_->param<double>("shiftery", shiftery, 0);
             double shifterz = 0;
             nh_->param<double>("shifterz", shifterz, 0);*/
-
 
             //fixed_to_ik_variable.getOrigin() = fixed_to_ik.getOrigin() + tf::Vector3(shifterx,shiftery,shifterz);
 
@@ -1366,7 +1393,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
 
             //pubCloud("cloud", cloud, fixed_frame_.c_str());
             //pubCloud("collision", cloud_torso, ik_frame_.c_str());
-            pubCloud("collision", cloud, fixed_frame_);
+            //pubCloud("collision", cloud, fixed_frame_);
 
             //std::cout << "updating collision mode with pc" << std::endl;
 
@@ -1391,9 +1418,6 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
             collision_testing.publish_markers = true;
             ct_full_env.publish_markers = true;
 
-            std::vector<double> result;
-            result.resize(7);
-            std::fill( result.begin(), result.end(), 0 );
 
             collision_free.clear();
 
@@ -1401,16 +1425,25 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
             for (std::vector<tf::Pose>::iterator it = reachable.begin(); (it!=reachable.end()) && ros::ok(); ++it)
             {
                 //std::cout << "tick" << std::endl;
+                // get this from grip model
+
+
                 tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(*it);
-                if (get_ik(arm, in_ik_frame, result) == 1)
+
+                tf::Pose in_ik_frame_push = in_ik_frame * rel;
+
+                if ((get_ik(arm, in_ik_frame, result) == 1)
+                        && (get_ik(arm, in_ik_frame_push, result_push) == 1))
                 {
 
-                    tf::Transform wristy;
-                    wristy.setOrigin(tf::Vector3(0.18,0,0));
-                    wristy.setRotation(tf::Quaternion(0,0,0,1));
 
                     //bool inCollision = collision_testing.inCollision(arm, result);
+                    ROS_INFO("pre");
                     bool inCollision = ct_full_env.inCollision(arm, result);
+
+                    inCollision |= collision_testing.inCollision(arm, result_push);
+
+                    ROS_INFO("post");
                     if (!inCollision)
                     {
                         collision_free.push_back(*it);
@@ -1421,14 +1454,20 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
                         //actPose = getPoseIn("base_link",actPose);
                         //printf("\nbin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
                         approach = getPoseIn("torso_lift_link",actPose);
-                        tf::Transform rel;
-                        rel.setOrigin(tf::Vector3(0.1,0,0));
-                        rel.setRotation(tf::Quaternion(0,0,0,1));
                         actPose.setData(in_ik_frame * wristy * rel);
                         actPose.frame_id_ = ik_frame_;
                         //actPose = getPoseIn("base_link",actPose);
                         //printf("bin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
                         push = getPoseIn("torso_lift_link",actPose);
+                        std::cout << push.getOrigin().z() << std::endl;
+
+                        if (push.getOrigin().z() < lowest_z)
+                        {
+                            lowest_idx = collision_free.size() - 1;
+                            lowest_z = push.getOrigin().z() ;
+                        }
+
+                        //ros::Duration(0.2).sleep();
                         //RobotArm::getInstance(0)->move_arm_via_ik(approach);
                         //RobotArm::getInstance(0)->move_arm_via_ik(push);
                         //RobotArm::getInstance(0)->move_arm_via_ik(approach);
@@ -1440,6 +1479,34 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
             std::cout << "number of collision free grasps : " << collision_free.size() << " out of " << reachable.size() << std::endl;
 
             rt.sleep();
+        }
+
+        lowest_idx = ((size_t)ros::Time::now().toSec()) % collision_free.size();
+
+        if (lowest_idx != -1)
+        {
+            tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(collision_free[lowest_idx]);
+            tf::Pose in_ik_frame_push = in_ik_frame * rel;
+
+            get_ik(arm, in_ik_frame, result);
+            get_ik(arm, in_ik_frame_push, result_push);
+
+            tf::Stamped<tf::Pose> actPose, approach, push;
+            actPose.setData(in_ik_frame * wristy);
+            actPose.frame_id_ = ik_frame_;
+
+            approach = getPoseIn("torso_lift_link",actPose);
+            actPose.setData(in_ik_frame * wristy * rel);
+            actPose.frame_id_ = ik_frame_;
+
+            push = getPoseIn("torso_lift_link",actPose);
+            std::cout << push.getOrigin().z() << std::endl;
+            RobotArm::getInstance(0)->move_arm_via_ik(approach);
+            RobotArm::getInstance(0)->move_arm_via_ik(push);
+            RobotArm::getInstance(0)->move_arm_via_ik(approach);
+
+            exit(0);
+
         }
 
     }
@@ -1618,7 +1685,6 @@ int main(int argc,char **argv)
         data_from_bag = true;
     }
 
-
     if ((argc>1) && (atoi(argv[1])==2))
     {
         data_to_bag = true;
@@ -1633,28 +1699,34 @@ int main(int argc,char **argv)
     //RobotHead()
 
     // test arm motion
-    std::vector<double> jstate[2];
-    jstate[0].resize(7);
-    jstate[1].resize(7);
 
-    jstate[0][0] = -1.6168837569724208;
-    jstate[0][1] =  0.15550442262485537;
-    jstate[0][2] =  -1.25;
-    jstate[0][3] =  -2.1222118472906528;
-    jstate[0][4] =  -0.90575412503025221;
-    jstate[0][5] =  -1.3540678462623723;
-    jstate[0][6] =  1.7130631649684915;
+    if ((argc>1) && (atoi(argv[1])==0))
+    {
+        std::cout << "Reset arm position" << std::endl;
+        std::vector<double> jstate[2];
+        jstate[0].resize(7);
+        jstate[1].resize(7);
 
-    jstate[1][0] = 1.5371426009988673;
-    jstate[1][1] =  0.15318173630933338;
-    jstate[1][2] =  1.25;
-    jstate[1][3] =  -2.1017963799253305;
-    jstate[1][4] =  0.66713731189146697;
-    jstate[1][5] =  -0.7240180626857029;
-    jstate[1][6] =  -10.049029141041331;
+        jstate[0][0] = -1.6168837569724208;
+        jstate[0][1] =  0.15550442262485537;
+        jstate[0][2] =  -1.25;
+        jstate[0][3] =  -2.1222118472906528;
+        jstate[0][4] =  -0.90575412503025221;
+        jstate[0][5] =  -1.3540678462623723;
+        jstate[0][6] =  1.7130631649684915;
 
-    RobotArm::getInstance(0)->move_arm_joint(jstate[0]);
-    RobotArm::getInstance(1)->move_arm_joint(jstate[1]);
+        jstate[1][0] = 1.5371426009988673;
+        jstate[1][1] =  0.15318173630933338;
+        jstate[1][2] =  1.25;
+        jstate[1][3] =  -2.1017963799253305;
+        jstate[1][4] =  0.66713731189146697;
+        jstate[1][5] =  -0.7240180626857029;
+        jstate[1][6] =  -10.049029141041331;
+
+        RobotArm::getInstance(0)->move_arm_joint(jstate[0]);
+        RobotArm::getInstance(1)->move_arm_joint(jstate[1]);
+        exit(0);
+    }
 
     //exit(0);
 
