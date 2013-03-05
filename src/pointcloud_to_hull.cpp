@@ -66,6 +66,33 @@ tf::TransformBroadcaster *br = 0;
 template <class T>
 void pubCloud(const std::string &topic_name, const T &cloud, std::string frame_id = fixed_frame_);
 
+void reset_arms()
+{
+    std::cout << "Reset arm position" << std::endl;
+    std::vector<double> jstate[2];
+    jstate[0].resize(7);
+    jstate[1].resize(7);
+
+    jstate[0][0] = -1.6168837569724208;
+    jstate[0][1] =  0.15550442262485537;
+    jstate[0][2] =  -1.25;
+    jstate[0][3] =  -2.1222118472906528;
+    jstate[0][4] =  -0.90575412503025221;
+    jstate[0][5] =  -1.3540678462623723;
+    jstate[0][6] =  1.7130631649684915;
+
+    jstate[1][0] = 1.5371426009988673;
+    jstate[1][1] =  0.15318173630933338;
+    jstate[1][2] =  1.25;
+    jstate[1][3] =  -2.1017963799253305;
+    jstate[1][4] =  0.66713731189146697;
+    jstate[1][5] =  -0.7240180626857029;
+    jstate[1][6] =  -10.049029141041331;
+
+    RobotArm::getInstance(0)->move_arm_joint(jstate[0]);
+    RobotArm::getInstance(1)->move_arm_joint(jstate[1]);
+}
+
 //void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::string frame_id = fixed_frame_);
 
 void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
@@ -934,129 +961,27 @@ void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses)
 boost::mutex transforms_from_planning_response_mutex;
 std::vector<tf::StampedTransform> transforms_from_planning_response; // for tf publishing
 
-
-void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose> fixed_to_ik, tf::Stamped<tf::Pose> sensor_in_fixed)
-
-//void testOctomap()//const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_hull)
+void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vector<tf::Pose> &object_posterior_belief, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,tf::Vector3 bb_min, tf::Vector3 bb_max, tf::Stamped<tf::Pose> fixed_to_ik, tf::Stamped<tf::Pose> sensor_in_fixed)
 {
-
-
-    int n = 0;
-
-    //generate object we search as a pointcloud
-    pcl::PointCloud<pcl::PointXYZ>::Ptr object_cloud (new pcl::PointCloud<pcl::PointXYZ>);
-    for (int i=0; i < 100; i++)
-    {
-        tf::Pose act = vdc_pose(n++);
-        act.setOrigin(tf::Vector3(0,0,0));
-        tf::Pose rel;
-        rel.setOrigin(tf::Vector3(.0125,0,0));
-        //rel.setOrigin(tf::Vector3(.05,0,0));
-        rel.setRotation(tf::Quaternion(0,0,0,1));
-
-        act = act * rel;
-        pcl::PointXYZ pt;
-        pt.x = act.getOrigin().x();
-        pt.y = act.getOrigin().y();
-        pt.z = act.getOrigin().z();
-
-        object_cloud->points.push_back(pt);
-
-        //geometry_msgs::Pose pose_msg;
-        //tf::poseTFToMsg(act, pose_msg);
-        //std::cout << pose_msg << std::endl;
-        //ps_ary.poses.push_back(pose_msg);
-    }
-
-    //generate a tabletopobject representing the object we search
-    TableTopObject obj(object_cloud);
-
-    //pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_table (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_unknown (new pcl::PointCloud<pcl::PointXYZ>);
 
-    ros::Time lookup_time;
-
-    //! get the pointcloud
-    //getCloud(cloud, fixed_frame_, ros::Time::now() - ros::Duration(1), &lookup_time);
-
-    ros::Time before = ros::Time::now();
-
-// {
-    double m_res = 0.01;
-    //double m_treeDepth;
-    double m_probHit = 0.7;
-    double m_probMiss = 0.4;
-    double m_thresMin = 0.12;
-    double m_thresMax = 0.97;
-
-    OcTreeROS *m_octoMap = new OcTreeROS(m_res);
-    m_octoMap->octree.setProbHit(m_probHit);
-    m_octoMap->octree.setProbMiss(m_probMiss);
-    m_octoMap->octree.setClampingThresMin(m_thresMin);
-    m_octoMap->octree.setClampingThresMax(m_thresMax);
-    //m_treeDepth = m_octoMap->octree.getTreeDepth();
-
-    OcTreeROS *m_octoMap_b = new OcTreeROS(m_res);
-    m_octoMap_b->octree.setProbHit(m_probHit);
-    m_octoMap_b->octree.setProbMiss(m_probMiss);
-    m_octoMap_b->octree.setClampingThresMin(m_thresMin);
-    m_octoMap_b->octree.setClampingThresMax(m_thresMax);
-    //m_treeDepth = m_octoMap_b->octree.getTreeDepth();
-
-    //tf::Vector3 bb_min(-1.9,1.6,.875);
-    //tf::Vector3 bb_max(-1.6,2.1,1.2);
-    //tf::Vector3 bb_min(-2.1,1.6,.875);
-    //tf::Vector3 bb_min(-2.1,1.6,.89);
-    //tf::Vector3 bb_max(-1.6,2.1,1.2);
-    //tf::Vector3 bb_min(-1.3,-7.15,.745);
-    //tf::Vector3 bb_max(-.82,-6.7,1.2);
-
-    tf::Vector3 bb_min(0,0,0.03);
-    tf::Vector3 bb_max(.75,.75,.4);
-
     getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
-
 
     //! get sensor to map
     //tf::Stamped<tf::Pose> sensor_in_fixed = getPose(fixed_frame_.c_str(),rgb_optical_frame_.c_str());
-
 
     TableTopObject full_environment(sensor_in_fixed.getOrigin(), bb_min.z(), cloud_in_box);
 
     pubCloud("cluster_volume", full_environment.getAsCloud() , fixed_frame_);
 
-    ROS_INFO("before creating samples");
-    std::vector<tf::Pose> object_belief;
-    for (int k =0; k < 10000; k++)
-    {
-        object_belief.push_back(vdc_pose_bound(bb_min,bb_max,k));
-    }
-    ROS_INFO("samples created");
-
-    //pub_belief(object_belief);
-
-    // randomly calculate grasps. fun!
-    if (0)
-    {
-        std::vector<tf::Pose> checked;
-        checkGrasps(cloud_in_box,object_belief,checked);
-        std::cout << "number of good looking grasps : " << checked.size() << std::endl;
-        pub_belief("vdc_poses",checked);
-        ros::Rate rt(10);
-        while (ros::ok())
-        {
-            rt.sleep();
-        }
-    }
-
     tf::Transform identity;
     identity.setIdentity();
 
-    std::vector<tf::Pose> object_posterior_belief;
-    for (std::vector<tf::Pose>::iterator it = object_belief.begin(); it!=object_belief.end(); it++)
+    //std::vector<tf::Pose> object_posterior_belief;
+    for (std::vector<tf::Pose>::iterator it = apriori_belief.begin(); it!=apriori_belief.end(); it++)
     {
         if (obj.checkCoveredPointcloud(*it,identity,full_environment))
             object_posterior_belief.push_back(*it);
@@ -1067,6 +992,11 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
     std::cout << "size of object belief " << object_posterior_belief.size() << std::endl;
 
     pub_belief("vdc_poses",object_posterior_belief);
+
+    if (object_posterior_belief.size() == 0) {
+        ROS_INFO("OBJECT A POSTERIORI BELIEF EMPTY");
+        return;
+    }
 
     std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr > clusters;
     std::vector<double> percentages;
@@ -1084,27 +1014,13 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
             std::cout << "cluster " << i << clusters_msg.clusters[i].width << " * " << clusters_msg.clusters[i].height << std::endl;
             pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
             pcl::fromROSMsg(clusters_msg.clusters[i], *cloud);
-            /*pcl::PointCloud<pcl::PointXYZ>::Ptr cloudrgb (new pcl::PointCloud<pcl::PointXYZ>);
-            for (size_t j = 0; j < cloud->points.size(); j++)
-            {
-                pcl::PointXYZRGB pt;
-                pt.x = cloud->points[j].x;
-                pt.y = cloud->points[j].y;
-                pt.z = cloud->points[j].z;
-                pt.r = 0;
-                pt.g = 0;
-                pt.b = 0;
-                cloudrgb->points.push_back(pt);
-            }
-            clusters.push_back(cloudrgb);
-            */
             clusters.push_back(cloud);
         }
     }
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr percentage_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 
-    //!create tabletop representation with one cluster missing at a time
+    //!create tabletop representation with one cluster missing at a time and check how many hypothesis it's covering
     int max_idx = -1;
     double max_perc = 0;
     std::vector<TableTopObject*> obj_excluding;
@@ -1157,6 +1073,8 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
             percentage_cloud->points.push_back(pt);
         }
     }
+
+    pubCloud("percentage", percentage_cloud, fixed_frame_.c_str());
 
     //! get the pose from fixed to ik
     //tf::Stamped<tf::Pose> fixed_to_ik = getPose(fixed_frame_, ik_frame_);
@@ -1372,114 +1290,80 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
         tf::Transform rel;
         rel.setOrigin(tf::Vector3(0.1,0,0));
         rel.setRotation(tf::Quaternion(0,0,0,1));
-        //while (ros::ok())
+
+
+        //! checking cycle
+
+        tf::Transform root = collision_testing.kinematic_state->getRootTransform();
+
+        collision_testing.kinematic_state->updateKinematicLinks();
+        ct_full_env.kinematic_state->updateKinematicLinks();
+
+        collision_testing.publish_markers = true;
+        ct_full_env.publish_markers = true;
+
+
+        collision_free.clear();
+
+
+        for (std::vector<tf::Pose>::iterator it = reachable.begin(); (it!=reachable.end()) && ros::ok(); ++it)
         {
+            //std::cout << "tick" << std::endl;
+            // get this from grip model
 
 
+            tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(*it);
 
-            /*double shifterx = 0;
-            nh_->param<double>("shifterx", shifterx, 0);
-            double shiftery = 0;
-            nh_->param<double>("shiftery", shiftery, 0);
-            double shifterz = 0;
-            nh_->param<double>("shifterz", shifterz, 0);*/
+            tf::Pose in_ik_frame_push = in_ik_frame * rel;
 
-            //fixed_to_ik_variable.getOrigin() = fixed_to_ik.getOrigin() + tf::Vector3(shifterx,shiftery,shifterz);
-
-            //pcl_ros::transformPointCloud(*cloud,*cloud_torso,fixed_to_ik_variable);
-
-            //! take in the full pointcloud as obstacles for now
-            //collision_testing.addPointCloud(cloud_torso);
-
-            //pubCloud("cloud", cloud, fixed_frame_.c_str());
-            //pubCloud("collision", cloud_torso, ik_frame_.c_str());
-            //pubCloud("collision", cloud, fixed_frame_);
-
-            //std::cout << "updating collision mode with pc" << std::endl;
-
-            tf::Transform root = collision_testing.kinematic_state->getRootTransform();
-
-            //geometry_msgs::Transform root_msg;
-
-            //! shift robot in planning env, does shift points in odom_combined or torso with it!
-            //root.setOrigin(tf::Vector3(shifterx,shiftery,shifterz));
-
-            //tf::transformTFToMsg(root, root_msg);
-
-            //std::cout << " ROOT TRANSFORM " << root_msg << std::endl;
-
-            //collision_testing.kinematic_state->getJointState("world_joint")->setJointStateValues(root);
-
-            //std::cout << "collision_testing.kinematic_state->updateKinematicLinks();" << std::endl;
-
-            collision_testing.kinematic_state->updateKinematicLinks();
-            ct_full_env.kinematic_state->updateKinematicLinks();
-
-            collision_testing.publish_markers = true;
-            ct_full_env.publish_markers = true;
-
-
-            collision_free.clear();
-
-
-            for (std::vector<tf::Pose>::iterator it = reachable.begin(); (it!=reachable.end()) && ros::ok(); ++it)
+            if ((get_ik(arm, in_ik_frame, result) == 1)
+                    && (get_ik(arm, in_ik_frame_push, result_push) == 1))
             {
-                //std::cout << "tick" << std::endl;
-                // get this from grip model
 
 
-                tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(*it);
+                //bool inCollision = collision_testing.inCollision(arm, result);
+                ROS_INFO("pre");
+                bool inCollision = ct_full_env.inCollision(arm, result);
 
-                tf::Pose in_ik_frame_push = in_ik_frame * rel;
+                inCollision |= collision_testing.inCollision(arm, result_push);
 
-                if ((get_ik(arm, in_ik_frame, result) == 1)
-                        && (get_ik(arm, in_ik_frame_push, result_push) == 1))
+                ROS_INFO("post");
+                if (!inCollision)
                 {
+                    collision_free.push_back(*it);
 
+                    tf::Stamped<tf::Pose> actPose, approach, push;
+                    actPose.setData(in_ik_frame * wristy);
+                    actPose.frame_id_ = ik_frame_;
+                    //actPose = getPoseIn("base_link",actPose);
+                    //printf("\nbin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
+                    approach = getPoseIn("torso_lift_link",actPose);
+                    actPose.setData(in_ik_frame * wristy * rel);
+                    actPose.frame_id_ = ik_frame_;
+                    //actPose = getPoseIn("base_link",actPose);
+                    //printf("bin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
+                    push = getPoseIn("torso_lift_link",actPose);
+                    std::cout << push.getOrigin().z() << std::endl;
 
-                    //bool inCollision = collision_testing.inCollision(arm, result);
-                    ROS_INFO("pre");
-                    bool inCollision = ct_full_env.inCollision(arm, result);
-
-                    inCollision |= collision_testing.inCollision(arm, result_push);
-
-                    ROS_INFO("post");
-                    if (!inCollision)
+                    if (push.getOrigin().z() < lowest_z)
                     {
-                        collision_free.push_back(*it);
-
-                        tf::Stamped<tf::Pose> actPose, approach, push;
-                        actPose.setData(in_ik_frame * wristy);
-                        actPose.frame_id_ = ik_frame_;
-                        //actPose = getPoseIn("base_link",actPose);
-                        //printf("\nbin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
-                        approach = getPoseIn("torso_lift_link",actPose);
-                        actPose.setData(in_ik_frame * wristy * rel);
-                        actPose.frame_id_ = ik_frame_;
-                        //actPose = getPoseIn("base_link",actPose);
-                        //printf("bin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
-                        push = getPoseIn("torso_lift_link",actPose);
-                        std::cout << push.getOrigin().z() << std::endl;
-
-                        if (push.getOrigin().z() < lowest_z)
-                        {
-                            lowest_idx = collision_free.size() - 1;
-                            lowest_z = push.getOrigin().z() ;
-                        }
-
-                        //ros::Duration(0.2).sleep();
-                        //RobotArm::getInstance(0)->move_arm_via_ik(approach);
-                        //RobotArm::getInstance(0)->move_arm_via_ik(push);
-                        //RobotArm::getInstance(0)->move_arm_via_ik(approach);
-                        //exit(0);
+                        lowest_idx = collision_free.size() - 1;
+                        lowest_z = push.getOrigin().z() ;
                     }
+
+                    //ros::Duration(0.2).sleep();
+                    //RobotArm::getInstance(0)->move_arm_via_ik(approach);
+                    //RobotArm::getInstance(0)->move_arm_via_ik(push);
+                    //RobotArm::getInstance(0)->move_arm_via_ik(approach);
+                    //exit(0);
                 }
             }
-
-            std::cout << "number of collision free grasps : " << collision_free.size() << " out of " << reachable.size() << std::endl;
-
-            rt.sleep();
         }
+
+        std::cout << "number of collision free grasps : " << collision_free.size() << " out of " << reachable.size() << std::endl;
+
+        rt.sleep();
+
 
         lowest_idx = ((size_t)ros::Time::now().toSec()) % collision_free.size();
 
@@ -1505,43 +1389,143 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
             RobotArm::getInstance(0)->move_arm_via_ik(push);
             RobotArm::getInstance(0)->move_arm_via_ik(approach);
 
-            exit(0);
-
         }
 
     }
 
-    pubCloud("percentage", percentage_cloud, fixed_frame_.c_str());
 
-    ros::Rate rt(5);
-    size_t idx = 0;
-    if (0)
-        while (ros::ok())
-        {
-            idx ++;
-            if (idx == object_posterior_belief.size())
-                idx = 0;
 
-            pcl::PointCloud<pcl::PointXYZRGB>::Ptr hypo_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
-            //std::cout << "k " << idx<< " size " << obj.cloud->points.size() << std::endl;
-            for (size_t i = 0; i < obj.cloud->points.size(); ++i)
-            {
-                tf::Vector3 vec(obj.cloud->points[i].x, obj.cloud->points[i].y, obj.cloud->points[i].z);
-                vec = object_posterior_belief[idx] * vec;
-                pcl::PointXYZRGB pt;
-                pt.x = vec.x();
-                pt.y = vec.y();
-                pt.z = vec.z();
-                pt.r = 0;
-                pt.g = 0;
-                pt.b = 1;
-                hypo_cloud->points.push_back(pt);
-            }
+    /*
+       //! show object point cloud at different remaining hypothetical positions
+       ros::Rate rt(5);
+       size_t idx = 0;
+       if (0)
+           while (ros::ok())
+           {
+               idx ++;
+               if (idx == object_posterior_belief.size())
+                   idx = 0;
 
-            pubCloud("hypothesis", hypo_cloud , fixed_frame_.c_str());
+               pcl::PointCloud<pcl::PointXYZRGB>::Ptr hypo_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+               //std::cout << "k " << idx<< " size " << obj.cloud->points.size() << std::endl;
+               for (size_t i = 0; i < obj.cloud->points.size(); ++i)
+               {
+                   tf::Vector3 vec(obj.cloud->points[i].x, obj.cloud->points[i].y, obj.cloud->points[i].z);
+                   vec = object_posterior_belief[idx] * vec;
+                   pcl::PointXYZRGB pt;
+                   pt.x = vec.x();
+                   pt.y = vec.y();
+                   pt.z = vec.z();
+                   pt.r = 0;
+                   pt.g = 0;
+                   pt.b = 1;
+                   hypo_cloud->points.push_back(pt);
+               }
 
-            //rt.sleep();
-        }
+               pubCloud("hypothesis", hypo_cloud , fixed_frame_.c_str());
+
+               //rt.sleep();
+           }*/
+
+
+}
+
+
+void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose> fixed_to_ik, tf::Stamped<tf::Pose> sensor_in_fixed)
+{
+
+    int n = 0;
+
+    //generate object we search as a pointcloud
+    pcl::PointCloud<pcl::PointXYZ>::Ptr object_cloud (new pcl::PointCloud<pcl::PointXYZ>);
+    for (int i=0; i < 100; i++)
+    {
+        tf::Pose act = vdc_pose(n++);
+        act.setOrigin(tf::Vector3(0,0,0));
+        tf::Pose rel;
+        rel.setOrigin(tf::Vector3(.0125,0,0));
+        //rel.setOrigin(tf::Vector3(.05,0,0));
+        rel.setRotation(tf::Quaternion(0,0,0,1));
+
+        act = act * rel;
+        pcl::PointXYZ pt;
+        pt.x = act.getOrigin().x();
+        pt.y = act.getOrigin().y();
+        pt.z = act.getOrigin().z();
+
+        object_cloud->points.push_back(pt);
+
+        //geometry_msgs::Pose pose_msg;
+        //tf::poseTFToMsg(act, pose_msg);
+        //std::cout << pose_msg << std::endl;
+        //ps_ary.poses.push_back(pose_msg);
+    }
+
+    //generate a tabletopobject representing the object we search
+    TableTopObject obj(object_cloud);
+
+    ros::Time lookup_time;
+
+    //! get the pointcloud
+    //getCloud(cloud, fixed_frame_, ros::Time::now() - ros::Duration(1), &lookup_time);
+
+    ros::Time before = ros::Time::now();
+
+    double m_res = 0.01;
+    //double m_treeDepth;
+    double m_probHit = 0.7;
+    double m_probMiss = 0.4;
+    double m_thresMin = 0.12;
+    double m_thresMax = 0.97;
+
+    OcTreeROS *m_octoMap = new OcTreeROS(m_res);
+    m_octoMap->octree.setProbHit(m_probHit);
+    m_octoMap->octree.setProbMiss(m_probMiss);
+    m_octoMap->octree.setClampingThresMin(m_thresMin);
+    m_octoMap->octree.setClampingThresMax(m_thresMax);
+    //m_treeDepth = m_octoMap->octree.getTreeDepth();
+
+    OcTreeROS *m_octoMap_b = new OcTreeROS(m_res);
+    m_octoMap_b->octree.setProbHit(m_probHit);
+    m_octoMap_b->octree.setProbMiss(m_probMiss);
+    m_octoMap_b->octree.setClampingThresMin(m_thresMin);
+    m_octoMap_b->octree.setClampingThresMax(m_thresMax);
+    //m_treeDepth = m_octoMap_b->octree.getTreeDepth();
+
+    tf::Vector3 bb_min(0,0,0.03);
+    tf::Vector3 bb_max(.75,.75,.4);
+
+    //pcl::PointCloud<pcl::PointXYZ>::Ptr cloud;
+
+
+    ROS_INFO("before creating samples");
+    std::vector<tf::Pose> apriori_belief;
+    std::vector<tf::Pose> aposteriori_belief;
+    for (int k =0; k < 10000; k++)
+    {
+        apriori_belief.push_back(vdc_pose_bound(bb_min,bb_max,k));
+    }
+    ROS_INFO("samples created");
+
+    while (ros::ok()) {
+
+        reset_arms();
+
+        if (!data_from_bag)
+            getCloud(cloud, fixed_frame_, ros::Time::now());
+
+        planStep(obj, apriori_belief, aposteriori_belief, cloud, bb_min, bb_max, fixed_to_ik, sensor_in_fixed);
+
+        ROS_ERROR("PRE %zu POST %zu", apriori_belief.size(), aposteriori_belief.size());
+
+        if (aposteriori_belief.size() == 0)
+            exit(0);
+
+        apriori_belief = aposteriori_belief;
+        aposteriori_belief.clear();
+
+    }
+
 }
 
 
@@ -1702,29 +1686,7 @@ int main(int argc,char **argv)
 
     if ((argc>1) && (atoi(argv[1])==0))
     {
-        std::cout << "Reset arm position" << std::endl;
-        std::vector<double> jstate[2];
-        jstate[0].resize(7);
-        jstate[1].resize(7);
-
-        jstate[0][0] = -1.6168837569724208;
-        jstate[0][1] =  0.15550442262485537;
-        jstate[0][2] =  -1.25;
-        jstate[0][3] =  -2.1222118472906528;
-        jstate[0][4] =  -0.90575412503025221;
-        jstate[0][5] =  -1.3540678462623723;
-        jstate[0][6] =  1.7130631649684915;
-
-        jstate[1][0] = 1.5371426009988673;
-        jstate[1][1] =  0.15318173630933338;
-        jstate[1][2] =  1.25;
-        jstate[1][3] =  -2.1017963799253305;
-        jstate[1][4] =  0.66713731189146697;
-        jstate[1][5] =  -0.7240180626857029;
-        jstate[1][6] =  -10.049029141041331;
-
-        RobotArm::getInstance(0)->move_arm_joint(jstate[0]);
-        RobotArm::getInstance(1)->move_arm_joint(jstate[1]);
+        reset_arms();
         exit(0);
     }
 
