@@ -47,6 +47,19 @@ std::string data_bag_name = "data.bag";
 #include <actionlib/client/terminal_state.h>
 #include <mc_graspable/FindGraspablesAction.h>
 
+#include <stdlib.h>
+
+void start()
+{
+    system("rosservice call gazebo/unpause_physics");
+}
+
+void finish()
+{
+    system("rosservice call gazebo/pause_physics");
+    exit(0);
+}
+
 
 int get_ik(const int arm, const tf::Pose targetPose, std::vector<double> &jointValues);
 
@@ -976,6 +989,20 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_unknown (new pcl::PointCloud<pcl::PointXYZ>);
 
+    pcl::PointCloud<pcl::PointXYZ>::Ptr table (new pcl::PointCloud<pcl::PointXYZ>);
+    for (double y = bb_min.y(); y < bb_max.y(); y += 0.01)
+        for (double x = bb_min.x(); x < bb_max.x(); x += 0.01)
+        {
+            pcl::PointXYZ pt;
+            pt.x = x;
+            pt.y = y;
+            pt.z = bb_min.z();
+            table->points.push_back(pt);
+        }
+
+
+    pubCloud("table", table , fixed_frame_);
+
     getPointsInBox(cloud, cloud_in_box, bb_min, bb_max);
 
     //! get sensor to map
@@ -999,7 +1026,7 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
 
     std::cout << "size of object belief " << object_posterior_belief.size() << std::endl;
 
-    pub_belief("vdc_poses",object_posterior_belief);
+    pub_belief("belief_poses",object_posterior_belief);
 
     if (object_posterior_belief.size() == 0)
     {
@@ -1188,7 +1215,7 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
         pub_belief("reachable_grasps",reachable);
 
 
-        size_t hit = -1;
+        //size_t hit = -1;
         /*
         for (size_t i = 0; i < collision_testing.planning_scene_res.planning_scene.fixed_frame_transforms.size(); ++i)
         {
@@ -1283,14 +1310,17 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
 
         for (size_t i = 0; i < clusters.size(); i ++)
         {
-            if (i != max_idx)
+            if ((int)i != max_idx)
             {
                 collision_testing.addPointCloud(clusters[i], .01,&tum_os_table_to_odom_combined);
                 std::cout << " adding cluster " <<  i << "to obstacles" << std::endl;
             }
         }
 
+        collision_testing.addPointCloud(table,.01,&tum_os_table_to_odom_combined);
+
         ct_full_env.addPointCloud( full_environment.getAsCloud(), .01, &tum_os_table_to_odom_combined);
+        ct_full_env.addPointCloud(table,.01,&tum_os_table_to_odom_combined);
 
         //pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_torso (new pcl::PointCloud<pcl::PointXYZ>);
 
@@ -1329,7 +1359,7 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
 
         //! checking cycle
 
-        tf::Transform root = collision_testing.kinematic_state->getRootTransform();
+        //tf::Transform root = collision_testing.kinematic_state->getRootTransform();
 
         collision_testing.kinematic_state->updateKinematicLinks();
         ct_full_env.kinematic_state->updateKinematicLinks();
@@ -1337,14 +1367,14 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
         collision_testing.publish_markers = true;
         ct_full_env.publish_markers = true;
 
-
+        std::vector<double> collision_free_pushfactor;
         //while (ros::ok())
         {
 
 
             collision_free.clear();
 
-            int min_remaining = object_posterior_belief.size() + 1;
+            size_t min_remaining = object_posterior_belief.size() + 1;
 
 
             for (std::vector<tf::Pose>::iterator it = reachable.begin(); (it!=reachable.end()) && ros::ok(); ++it)
@@ -1357,7 +1387,7 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
 
                 tf::Pose in_ik_frame_push = in_ik_frame * rel;
 
-                if ((get_ik(arm, in_ik_frame, result) == 1)
+                /*if ((get_ik(arm, in_ik_frame, result) == 1)
                         && (get_ik(arm, in_ik_frame_push, result_push) == 1))
                 {
 
@@ -1371,75 +1401,135 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
                     inCollision |= collision_testing.inCollision(arm, result_push);
 
                     ROS_INFO("post");
-                    if (!inCollision)
+                    if (!inCollision)*/
+                if ((!ct_full_env.inCollision(arm, in_ik_frame)) && (!collision_testing.inCollision(arm,in_ik_frame_push)))
+                {
+
+                    tf::Stamped<tf::Pose> actPose, approach, push;
+                    actPose.setData(in_ik_frame * wristy);
+                    actPose.frame_id_ = ik_frame_;
+                    //actPose = getPoseIn("base_link",actPose);
+                    //printf("\nbin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
+                    approach = getPoseIn("torso_lift_link",actPose);
+
+                    actPose.setData(in_ik_frame * wristy * rel);
+                    actPose.frame_id_ = ik_frame_;
+                    //actPose = getPoseIn("base_link",actPose);
+                    //printf("bin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
+                    push = getPoseIn("torso_lift_link",actPose);
+                    std::cout << push.getOrigin().z() << std::endl;
+
+                    if (push.getOrigin().z() < lowest_z)
+                    {
+                        lowest_idx = collision_free.size();
+                        lowest_z = push.getOrigin().z() ;
+                    }
+
+                    //!check effect of pushing
+                    tf::Vector3 push_vector = push.getOrigin() - approach.getOrigin();
+                    std::cout << "PUSH VECTOR" << push_vector.x() << " "<< push_vector.y() << " "<< push_vector.z() << std::endl;
+                    // how far do we push until we touch the object ?
+                    double amt_step = .01;
+                    double amt_free = 0;
+                    for (double amt = 0; amt <= 1.001; amt += amt_step)
                     {
 
-                        tf::Stamped<tf::Pose> actPose, approach, push;
-                        actPose.setData(in_ik_frame * wristy);
-                        actPose.frame_id_ = ik_frame_;
-                        //actPose = getPoseIn("base_link",actPose);
-                        //printf("\nbin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
-                        approach = getPoseIn("torso_lift_link",actPose);
-                        actPose.setData(in_ik_frame * wristy * rel);
-                        actPose.frame_id_ = ik_frame_;
-                        //actPose = getPoseIn("base_link",actPose);
-                        //printf("bin/ias_drawer_executive -2 %i %f %f %f %f %f %f %f\n", 0 ,actPose.getOrigin().x(), actPose.getOrigin().y(), actPose.getOrigin().z(), actPose.getRotation().x(), actPose.getRotation().y(), actPose.getRotation().z(), actPose.getRotation().w());
-                        push = getPoseIn("torso_lift_link",actPose);
-                        std::cout << push.getOrigin().z() << std::endl;
+                        tf::Pose check_pose = in_ik_frame;
+                        check_pose.getOrigin() = (in_ik_frame.getOrigin() * (1 - amt)) + (in_ik_frame_push.getOrigin() * amt);
+                        bool inCo = ct_full_env.inCollision(arm,check_pose);
 
-                        if (push.getOrigin().z() < lowest_z)
-                        {
-                            lowest_idx = collision_free.size();
-                            lowest_z = push.getOrigin().z() ;
-                        }
+                        //std::cout << amt << " inco " <<  (inCo ? "true " : "false ") << amt_free << std::endl;
 
-                        //!check effect of pushing
-                        tf::Vector3 push_vector = push.getOrigin() - approach.getOrigin();
-                        std::cout << "PUSH VECTOR" << push_vector.x() << " "<< push_vector.y() << " "<< push_vector.z() << std::endl;
-
-                        tf::Transform push_transform;
-                        push_transform.setOrigin(tf::Vector3(push_vector.x(),push_vector.y(),0));
-                        push_transform.setRotation(tf::Quaternion(0,0,0,1));
-
-                        size_t num_remaining_inv = 0;
-                        for (std::vector<tf::Pose>::iterator it = object_posterior_belief.begin(); it!=object_posterior_belief.end(); it++)
-                            {
-                            if (obj.checkCoveredPointcloud(*it,push_transform,*obj_only[max_idx]))
-                                num_remaining_inv++;
-                            }
-                        std::cout << "REMAINING " << num_remaining_inv << " of " << object_posterior_belief.size() << std::endl;
-
-
-                        if (num_remaining_inv <= min_remaining)
-                        {
-                            if (num_remaining_inv < min_remaining)
-                                collision_free.clear();
-                            collision_free.push_back(*it);
-                        }
-
-
-                        //ros::Duration(0.2).sleep();
-                        //RobotArm::getInstance(0)->move_arm_via_ik(approach);
-                        //RobotArm::getInstance(0)->move_arm_via_ik(push);
-                        //RobotArm::getInstance(0)->move_arm_via_ik(approach);
-                        //exit(0);
+                        if (inCo)
+                            amt = 100;
+                        else
+                            amt_free = amt;
                     }
+
+                    std::cout <<  "AMT FRE" << amt_free << std::endl;
+
+                    // how far can we push the object?
+                    double end_step = .01;
+                    double end_free = 0;
+                    for (double end = 1; end <= 2.001; end += end_step)
+                    {
+
+                        tf::Pose check_pose = in_ik_frame;
+                        check_pose.getOrigin() = in_ik_frame.getOrigin() + end * in_ik_frame_push.getOrigin() - in_ik_frame.getOrigin();
+
+                        bool inCo = collision_testing.inCollision(arm,check_pose);
+
+                        //std::cout << amt << " inco " <<  (inCo ? "true " : "false ") << amt_free << std::endl;
+
+                        if (inCo)
+                            end = 100;
+                        else
+                            end_free = end;
+                    }
+
+                    std::cout <<  "END FREE" << end_free << std::endl;
+                    std::cout <<  "              gives us " << end_free - amt_free << std::endl;
+
+
+                    tf::Transform push_transform;
+                    push_transform.setOrigin(tf::Vector3(push_vector.x(),push_vector.y(),0));
+                    push_transform.setRotation(tf::Quaternion(0,0,0,1));
+
+                    //push_transform.setOrigin(push_transform.getOrigin() * (1-amt_free));
+
+                    push_transform.setOrigin(push_transform.getOrigin() * ( end_free - amt_free));
+
+                    std::cout << "Vector length" << push_transform.getOrigin().length() << std::endl;
+
+                    size_t num_remaining_inv = 0;
+                    for (std::vector<tf::Pose>::iterator jjt = object_posterior_belief.begin(); jjt!=object_posterior_belief.end(); jjt++)
+                    {
+                        if (obj.checkCoveredPointcloud(*jjt,push_transform,*obj_only[max_idx]))
+                            num_remaining_inv++;
+                    }
+                    std::cout << "REMAINING " << num_remaining_inv << " of " << object_posterior_belief.size() << std::endl;
+
+                    if (num_remaining_inv <= min_remaining)
+                    {
+                        if (num_remaining_inv < min_remaining)
+                        {
+                            collision_free.clear();
+                            collision_free_pushfactor.clear();
+                        }
+
+                        min_remaining = num_remaining_inv;
+
+                        collision_free.push_back(*it);
+                        collision_free_pushfactor.push_back(end_free);
+                    }
+
+                    //ros::Duration(0.2).sleep();
+                    //RobotArm::getInstance(0)->move_arm_via_ik(approach);
+                    //RobotArm::getInstance(0)->move_arm_via_ik(push);
+                    //RobotArm::getInstance(0)->move_arm_via_ik(approach);
+                    //exit(0);
                 }
             }
+            //}
 
             std::cout << "number of collision free grasps : " << collision_free.size() << " out of " << reachable.size() << std::endl;
 
         }
 
-        //exit(0);
+        //finish();
 
         //take a random grasp for debugging
-        lowest_idx = ((size_t)ros::Time::now().toSec()) % collision_free.size();
 
         if (lowest_idx != -1)
         {
+
+            std::cout <<" TIME " <<  ((size_t)ros::Time::now().toSec() << std::endl;
+            lowest_idx = ((size_t)ros::Time::now().toSec()) % collision_free.size();
+
+            double factor = collision_free_pushfactor[lowest_idx];
             tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(collision_free[lowest_idx]);
             tf::Pose in_ik_frame_push = in_ik_frame * rel;
+            in_ik_frame_push.getOrigin() = in_ik_frame.getOrigin() + factor * (in_ik_frame_push.getOrigin() - in_ik_frame.getOrigin());
 
             get_ik(arm, in_ik_frame, result);
             get_ik(arm, in_ik_frame_push, result_push);
@@ -1591,8 +1681,10 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
 
         ROS_ERROR("PRE %zu POST %zu", apriori_belief.size(), aposteriori_belief.size());
 
+
+
         if (aposteriori_belief.size() == 0)
-            exit(0);
+            finish();
 
         apriori_belief = aposteriori_belief;
         aposteriori_belief.clear();
@@ -1735,6 +1827,8 @@ int main(int argc,char **argv)
     ros::init(argc, argv, "pointcloud_to_hull");
 
     init();
+
+    start();
 
     std::cout << argc << std::endl;
 
@@ -1934,7 +2028,7 @@ int main(int argc,char **argv)
 
             joint_state = collision_testing.planning_scene.robot_state.joint_state;
 
-            size_t hit = -1;
+            //size_t hit = -1;
 
             for (size_t i = 0; i < collision_testing.planning_scene.fixed_frame_transforms.size(); ++i)
             {
@@ -1976,7 +2070,7 @@ int main(int argc,char **argv)
 
             collision_testing.updateCollisionModel();
 
-            tf::Transform root = collision_testing.kinematic_state->getRootTransform();
+            //tf::Transform root = collision_testing.kinematic_state->getRootTransform();
 
         }
 
@@ -1987,13 +2081,15 @@ int main(int argc,char **argv)
 
 
     testOctomap(cloud, fixed_to_ik, sensor_in_fixed);
+
+    finish();
     //}
 
-    while (ros::ok())
-    {
-        rt.sleep();
-        ros::spinOnce();
-    }
+//    while (ros::ok())
+    //{
+  //      rt.sleep();
+      //  ros::spinOnce();
+    //}
 
 
 }
