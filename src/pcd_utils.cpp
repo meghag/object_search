@@ -325,7 +325,7 @@ bool incontact(sensor_msgs::PointCloud2 cloud2_1, sensor_msgs::PointCloud2 cloud
 	ec.setSearchMethod (tree);
 	ec.setInputCloud(concat);
 	ec.extract (cluster_indices);
-	if (cluster_indices.size() == 1)
+	if (cluster_indices.size() <= 1)
 		//The two clusters are closer than 4 cm
 		return true;
 	else

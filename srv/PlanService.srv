@@ -3,6 +3,9 @@
 #The config cloud containing all objects as seen
 sensor_msgs/PointCloud2 object_cloud
 
+#Planar cloud
+sensor_msgs/PointCloud2 planar_cloud
+
 # The target object cloud
 #sensor_msgs/PointCloud2 target_cloud
 

@@ -123,7 +123,7 @@ private:
     sensor_msgs::PointCloud2::Ptr objectCloud2 (new sensor_msgs::PointCloud2 ());
     sensor_msgs::PointCloud2::Ptr filteredObjectCloud2 (new sensor_msgs::PointCloud2 ());
 
-    sensor_msgs::PointCloud2 topub;
+    sensor_msgs::PointCloud2 topub, planarCloud2;
 
     /****************** Filter out the non-table points ******************/
     //pass_through_gen(cloud,pcdFiltered,true,0,1,true,-0.32,0.32,true,1.012,1.3);   // Kinect and shelf
@@ -143,9 +143,10 @@ private:
       //TODO: Detect only horizontal planes!!
       planar_seg(pcdFiltered,planarCloud,objectCloud,(string)"planar_cloud.pcd",(string)"object_cloud.pcd");
 
-      toROSMsg(*planarCloud, topub);
+      toROSMsg(*planarCloud, planarCloud2);
+      planarCloud2.header.frame_id = "base_link";
       for (int c = 0; c < 100; c++)
-    	  planar_pub_.publish(topub);
+    	  planar_pub_.publish(planarCloud2);
 
       tf::Vector3 min, max;
       minmax3d(min, max, planarCloud);
@@ -174,6 +175,7 @@ private:
       //Create a plan request
       tum_os::PlanService plan_srv;
       plan_srv.request.object_cloud = *filteredObjectCloud2;
+      plan_srv.request.planar_cloud = planarCloud2;
       plan_srv.request.table_height = max.z()+0.01;
       plan_srv.request.bb_min.resize(3);
       plan_srv.request.bb_min[0] = min.x();

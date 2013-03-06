@@ -113,9 +113,23 @@ private:
 	void make_grid(vector<sensor_msgs::PointCloud2> config);
 	void display_grid();
 	void display_bbx();
+	void display_octree(octomap::OcTree* octree);
+
+	void projectToPlanePerspective(const tf::Vector3 sensorOrigin,
+			const double tableHeight,
+			pcl::PointCloud<PointT>::Ptr& cloud,
+			pcl::PointCloud<PointT>::Ptr& cloud_projected);
+
+	void updateHiddenVoxels(const tf::Vector3 sensorOrigin,
+			octomap::OcTree* octree,
+			sensor_msgs::PointCloud2 cloud2,
+			const double tableHeight,
+			bool add_as_occupied);
+
+	void updateFreeVoxels(octomap::OcTree* octree);
 
 	void samplePose(sensor_msgs::PointCloud2 target_cloud2,
-					TableTopObject otherCloudTTO,
+					octomap::OcTree* octree,
 					tf::Vector3 sampling_bb_min,
 					tf::Vector3 sampling_bb_max,
 					vector<tf::Pose>& object_posterior_belief,
@@ -123,7 +137,7 @@ private:
 					bool check_visible);
 
 	bool checkHiddenOrVisible(sensor_msgs::PointCloud2 object_cloud2,
-					 TableTopObject otherCloudTTO,
+			octomap::OcTree* octree,
 					 tf::Transform ownTransform,
 					 tf::Transform otherTransform,
 					 bool check_hidden,
@@ -135,13 +149,14 @@ private:
 			map<int, double>& percentage);
 
 	double generatePercentageIfDisplaced(vector<tf::Pose> object_belief,
-									 vector<sensor_msgs::PointCloud2> new_config);
+									 vector<sensor_msgs::PointCloud2> new_config,
+									 octomap::OcTree* octree);
 
 	void findMovable(vector<sensor_msgs::PointCloud2> config,
 			vector<sensor_msgs::PointCloud2>& movable_clusters,
 			vector<int>& movable_idx);
 
-	void findPossibleMoves(sensor_msgs::PointCloud2& config,
+	void findPossibleMoves(octomap::OcTree* octree,
 			vector<sensor_msgs::PointCloud2> movable_clusters,
 			vector<int> movable_idx,
 			vector<Move>& possible_moves);
@@ -151,12 +166,12 @@ private:
 			sensor_msgs::PointCloud2 other_cloud,
 			vector<Move>& best_next_action_sequence,
 			double& total_percentage_revealed_so_far);
-
+/*
 	void random_plan(int horizon,
 			vector<sensor_msgs::PointCloud2> config,
 			sensor_msgs::PointCloud2 other_cloud,
 			vector<Move>& action_sequence_so_far);
-
+*/
 	void simulateMove(vector<sensor_msgs::PointCloud2> config,
 			Move move, vector<sensor_msgs::PointCloud2>& new_config);
 
@@ -180,11 +195,13 @@ private:
 	ros::ServiceClient manipulateClient_;
 	ros::ServiceClient newpcdClient_;
 	ros::ServiceClient bbx_client_;
+	ros::Publisher octreePub_;
 	
 	//Variables
 	float target_x, target_y, target_z;
 	sensor_msgs::PointCloud2 targetCloud2_;
 	sensor_msgs::PointCloud2 objectCloud2_;
+	sensor_msgs::PointCloud2 planarCloud2_;
 	std::vector<sensor_msgs::PointCloud2> clustersDetected_;
 	double tableHeight_;
 	tf::TransformListener listener;
@@ -202,6 +219,7 @@ private:
 	std::list<octomap::OcTreeVolume> freeVoxels_;
 	std::list<octomap::OcTreeVolume> occupiedVoxels_;
 	tf::Stamped<tf::Pose> cameraOrigin_;
+	octomap::point3d octomapCameraOrigin_;
 	sensor_msgs::PointCloud2 currentConfigPCL_;
 };
 
