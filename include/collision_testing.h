@@ -42,6 +42,8 @@ public :
 
     bool inCollision(int arm, std::vector<double> jointState);
 
+    bool inCollision(int arm, tf::Pose pose_in_ik_frame);
+
     arm_navigation_msgs::PlanningScene planning_scene;
 
     planning_models::KinematicState* kinematic_state;

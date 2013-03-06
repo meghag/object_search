@@ -332,14 +332,14 @@ bool CollisionTesting::inCollision(int arm, double jointState[])
         collision_models->getAllCollisionPointMarkers(*kinematic_state,
                 sum_arr,
                 color,
-                ros::Duration(100));
+                ros::Duration(1));
 
         //ROS_INFO("Publishin collision markers %zu", sum_arr.markers.size());
 
         vis_marker_array_publisher_.publish(sum_arr);
 
         //!TODO remove sleep for speed ;)
-        ros::Duration(0.5).sleep();
+        //ros::Duration(0.5).sleep();
     }
 
     return collision;
@@ -352,4 +352,18 @@ bool CollisionTesting::inCollision(int arm, std::vector<double> jointState)
     for (size_t i = 0; i < 7; ++i)
         jointStateArr[i] = jointState[i];
     return inCollision(arm,jointStateArr);
+}
+
+int get_ik(const int arm, const tf::Pose targetPose, std::vector<double> &jointValues);
+
+bool CollisionTesting::inCollision(int arm, tf::Pose pose_in_ik_frame)
+{
+    std::vector<double> result;
+    result.resize(7);
+    std::fill( result.begin(), result.end(), 0 );
+    //return collision if out of reach
+    if (get_ik(arm, pose_in_ik_frame, result) != 1)
+        return true;
+
+    return inCollision(arm,result);
 }
