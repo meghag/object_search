@@ -1,0 +1,29 @@
+<robot name="small_box_model">
+  <link name="small_box">
+    <inertial>
+      <origin xyz="0.0 0.0 0.1" /> 
+      <mass value="10" />
+      <inertia  ixx="1" ixy="0.0"  ixz="0.0"  iyy="1"  iyz="0.0"  izz="1" />
+    </inertial>
+    <visual>
+      <origin xyz="0.0 0.0 0.1"/>
+      <geometry>
+        <box size="0.07 0.07 0.12" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.0 0.0 0.1"/>
+      <geometry>
+        <box size="0.07 0.07 0.12" />
+      </geometry>
+    </collision>
+  </link>
+  <gazebo reference="small_box">
+    <material>Gazebo/Blue</material>
+    <turnGravityOff>false</turnGravityOff>
+    <kp>100000.0</kp>
+    <kd>0.0</kd>
+    <mu1>0.1</mu1>
+    <mu2>100000.0</mu2>
+  </gazebo>
+</robot>
