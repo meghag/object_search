@@ -1523,7 +1523,8 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
         if (lowest_idx != -1)
         {
 
-            std::cout <<" TIME " <<  ((size_t)ros::Time::now().toSec() << std::endl;
+            std::cout <<" TIME " <<  ((size_t)ros::Time::now().toSec()) << std::endl;
+
             lowest_idx = ((size_t)ros::Time::now().toSec()) % collision_free.size();
 
             double factor = collision_free_pushfactor[lowest_idx];
@@ -1656,8 +1657,8 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
     m_octoMap_b->octree.setClampingThresMax(m_thresMax);
     //m_treeDepth = m_octoMap_b->octree.getTreeDepth();
 
-    tf::Vector3 bb_min(0,0,0.03);
-    tf::Vector3 bb_max(.75,.75,.4);
+    tf::Vector3 bb_min(0,0,0.01);
+    tf::Vector3 bb_max(.75,.4,.4);
 
     //pcl::PointCloud<pcl::PointXYZ>::Ptr cloud;
 
