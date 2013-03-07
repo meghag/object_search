@@ -40,6 +40,10 @@ int get_ik(const int arm, const tf::Pose targetPose, std::vector<double> &jointV
 
     double tmp[] = {-1.6169497181369175, 0.15545771558980806, -1.250062782260915, -2.120402271101688, 11.660629107874348, -1.3540518577418752, -4.570108384006465};
 
+    if (arm == 1)
+        for (size_t k = 0; k < 7; ++k)
+            tmp[k] = -tmp[k];
+
     std::vector<double> seed_state(tmp,tmp+7);
     //std::vector<double> solution(tmp,tmp+7);
     int error_code = 0;

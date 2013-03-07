@@ -215,8 +215,97 @@ public:
     std::vector<bool> bb_full;
 };
 
+#include <Eigen/Dense>
 
-void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked)
+using namespace Eigen;
+
+template <typename Derived, typename OtherDerived>
+void calculateSampleCovariance(const MatrixBase<Derived>& x, const MatrixBase<Derived>& y, MatrixBase<OtherDerived> & C_)
+{
+    typedef typename Derived::Scalar Scalar;
+    typedef typename internal::plain_row_type<Derived>::type RowVectorType;
+
+    const Scalar num_observations = static_cast<Scalar>(x.rows());
+
+    const RowVectorType x_mean = x.colwise().sum() / num_observations;
+    const RowVectorType y_mean = y.colwise().sum() / num_observations;
+
+    MatrixBase<OtherDerived>& C = const_cast< MatrixBase<OtherDerived>& >(C_);
+
+    C.derived().resize(x.cols(),x.cols()); // resize the derived object
+    C = (x.rowwise() - x_mean).transpose() * (y.rowwise() - y_mean) / num_observations;
+
+
+}
+
+MatrixXd pos_covar_xy(const std::vector<tf::Vector3> &points)
+{
+    MatrixXd esamples(points.size(),3);
+    for (size_t n=0; n < points.size(); ++n)
+    {
+        VectorXd evec;
+        evec.resize(3);
+        evec(0) = points[n].x();
+        evec(1) = points[n].y();
+        evec(2) = points[n].z();
+        esamples.row(n) = evec;
+    }
+    MatrixXd ret;
+    calculateSampleCovariance(esamples,esamples,ret);
+    return ret;
+}
+
+void swap_if_less(tf::Vector3 &vec_a, double &val_a, tf::Vector3 &vec_b, double &val_b)
+{
+    if (val_a < val_b)
+    {
+        double tmp = val_a;
+        tf::Vector3 tmp_vec = vec_a;
+        vec_a = vec_b;
+        val_a = val_b;
+        vec_b = tmp_vec;
+        val_b = tmp;
+    }
+}
+
+void pos_eigen_xy(const std::vector<tf::Vector3> &points, std::vector<tf::Vector3> &evec, std::vector<double> &eval)
+{
+    Matrix<double,3,3> covarMat = pos_covar_xy(points);
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix<double,3,3> >
+    eigenSolver(covarMat);
+    //cout << "vec" << endl << eigenSolver.eigenvectors() << endl;
+    //cout << "val" << endl << eigenSolver.eigenvalues() << endl;
+    //MatrixXf::Index maxIndex;
+    //eigenSolver.eigenvalues().maxCoeff(&maxIndex);
+    //MatrixXd max = eigenSolver.eigenvectors().col(maxIndex);
+
+    for (size_t c = 0; c < 3; c++)
+    {
+        evec.push_back(tf::Vector3(eigenSolver.eigenvectors().col(c)(0),eigenSolver.eigenvectors().col(c)(1),eigenSolver.eigenvectors().col(c)(2)));
+        eval.push_back(eigenSolver.eigenvalues()(c));
+    }
+
+    //bubble sort eigenvectors after eigen values
+    swap_if_less(evec[0], eval[0], evec[1], eval[1]);
+    swap_if_less(evec[1], eval[1], evec[2], eval[2]);
+    swap_if_less(evec[0], eval[0], evec[1], eval[1]);
+
+    for (size_t c = 0; c < 3; c++)
+    {
+        std::cout << evec[c].x() << " "<< evec[c].y() << " "<< evec[c].z() << "  VAL " << eval[c] << std::endl;
+        //std::cout << eigenSolver.eigenvectors().col(c)(0) << " "
+        //          << eigenSolver.eigenvectors().col(c)(1) << " "
+        //        << eigenSolver.eigenvectors().col(c)(2) << " "
+        //      << " Eigenvalue " << eigenSolver.eigenvalues()(c) << std::endl;
+    }
+
+    //cout << "max " << endl << max << endl;
+
+    //tf::Vector3 maxVec(max(0),max(1),max(2));
+    //evec.push_back(maxVec);
+}
+
+void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked, std::vector<tf::Vector3> *normals = 0L, std::vector<tf::Vector3> *centers= 0L)
 {
     // min coordinates of aabb
     //std::vector<tf::Vector3> bb_min;
@@ -317,9 +406,15 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pos
     std::vector<size_t> bb_cnt;
     bb_cnt.resize(act.bb_min.size());
 
+    std::vector<tf::Vector3> points_inside;
+
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_normalvis(new pcl::PointCloud<pcl::PointXYZRGB>);
+
     // for each grasp
     for (std::vector<tf::Pose>::iterator it = unchecked.begin(); it!=unchecked.end(); ++it)
     {
+
+        points_inside.clear();
         std::fill( bb_cnt.begin(), bb_cnt.end(), 0 );
 
         bool good = true;
@@ -342,6 +437,8 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pos
                     bb_cnt[k]++;
                     if (!act.bb_full[k])
                         good = false;
+                    else
+                        points_inside.push_back(tf::Vector3(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z));
                 }
 
             }
@@ -350,17 +447,89 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pos
         //std::cout << std::endl;
         for (size_t j = 0; j < act.bb_min.size(); j++)
         {
+            //! arbitrary threshold 10 magix number, why ten points min?
             if (act.bb_full[j] && (bb_cnt[j] < 10))
                 good = false;
         }
 
         if (good)
         {
+            std::vector<tf::Vector3> evec;
+            std::vector<double> eval;
+
+            checked.push_back(*it);
+
             //for (int j = 0; j < bb_min.size(); j++)
             //std::cout << "bb_cnt" << j << " : " << bb_cnt[j] << std::endl;
-            checked.push_back(*it);
+
+            if (normals)
+            {
+                pos_eigen_xy(points_inside, evec, eval);
+                //tf::Vector3 normal = evec[0].cross(evec[1]);
+                tf::Vector3 normal = evec[2];
+
+                normal = normal.normalized();
+
+                std::cout << "evec0" << evec[0].x() << " " << evec[0].y() << " " << evec[0].z() << std::endl;
+                std::cout << "evec1" << evec[1].x() << " " << evec[1].y() << " " << evec[1].z() << std::endl;
+                std::cout << "evec2" << evec[2].x() << " " << evec[2].y() << " " << evec[2].z() << std::endl;
+                std::cout << "NORM                                                 " << normal.x() << " " << normal.y() << " " << normal.z() << " pt in " << points_inside.size() << std::endl;
+
+                //normals->push_back(normal);
+
+                tf::Vector3 avg(0,0,0);
+                for (size_t k = 0; k < points_inside.size(); ++k)
+                {
+                    pcl::PointXYZRGB pt;
+                    pt.x = points_inside[k].x();
+                    pt.y = points_inside[k].y();
+                    pt.z = points_inside[k].z();
+                    pt.r = 250;
+                    pt.g = 50;
+                    pt.b = 50;
+                    cloud_normalvis->points.push_back(pt);
+
+                    avg+= points_inside[k];
+                }
+
+                if (points_inside.size() > 0)
+                    avg = (1 /  (double)points_inside.size()) * avg;
+
+                tf::Vector3 norm = evec[2].normalize();
+
+                for (int coord = 0 ; coord < 3; coord++)
+                for (double len = 0; len < 0.05; len+= 0.001)
+                {
+                    pcl::PointXYZRGB pt;
+                    pt.x = avg.x() + evec[coord].x() * len;
+                    pt.y = avg.y() + evec[coord].y() * len;
+                    pt.z = avg.z() + evec[coord].z() * len;
+                    //pt.x = avg.x() + norm.x() * len;
+                    //pt.y = avg.y() + norm.y() * len;
+                    //pt.z = avg.z() + norm.z() * len;
+                    pt.r = ((coord == 0) ? 255 : 0);
+                    pt.g = ((coord == 1) ? 255 : 0);
+                    pt.b = ((coord == 2) ? 255 : 0);
+                    cloud_normalvis->points.push_back(pt);
+                }
+
+                normals->push_back(avg + norm);
+                if (centers)
+                    centers->push_back(avg);
+
+            }
+
         }
+
+
     }
+
+    if (normals) {
+        pubCloud("normals", cloud_normalvis, fixed_frame_);
+        //finish();
+    }
+
+    ros::Duration(.5).sleep();
 }
 
 
@@ -982,7 +1151,7 @@ void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses)
 boost::mutex transforms_from_planning_response_mutex;
 std::vector<tf::StampedTransform> transforms_from_planning_response; // for tf publishing
 
-void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vector<tf::Pose> &object_posterior_belief, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,tf::Vector3 bb_min, tf::Vector3 bb_max, tf::Stamped<tf::Pose> fixed_to_ik, tf::Stamped<tf::Pose> sensor_in_fixed)
+int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vector<tf::Pose> &object_posterior_belief, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,tf::Vector3 bb_min, tf::Vector3 bb_max, tf::Stamped<tf::Pose> fixed_to_ik, tf::Stamped<tf::Pose> sensor_in_fixed)
 {
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_table (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZ>);
@@ -1031,7 +1200,7 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
     if (object_posterior_belief.size() == 0)
     {
         ROS_INFO("OBJECT A POSTERIORI BELIEF EMPTY");
-        return;
+        return -1;
     }
 
     std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr > clusters;
@@ -1162,9 +1331,10 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
 
         transforms_from_planning_response_mutex.unlock();
 
-        int arm = 0; // right arm
+        //int arm =  1; // right arm
         std::cout << "Getting grasps for cluster #" << max_idx << std::endl;
         std::vector<tf::Pose> ik_checked,random,low,high,checked,filtered, reachable, collision_free;
+        std::vector<tf::Vector3> normals, centers;
 
         //getGrasps(clusters[max_idx], low, high);
 
@@ -1173,12 +1343,21 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
         tf::Vector3 cluster_min, cluster_max;
 
         minmax3d(cluster_min, cluster_max, clusters[max_idx]);
-        cluster_min -= tf::Vector3(.2,.2,0);
+        cluster_min -= tf::Vector3(.2,.2,.2);
         cluster_max += tf::Vector3(.2,.2,.2);
 
         //! Dangerous, we're using tf now for a test live
         fixed_to_ik = getPose(fixed_frame_, ik_frame_);
 
+        geometry_msgs::PoseStamped ps;
+        tf::poseStampedTFToMsg(fixed_to_ik, ps);
+        std::cout << "FIXED TO IK " << ps << std::endl;
+
+        //finish();
+
+        tf::Stamped<tf::Pose> odom_to_torso = getPose("odom_combined", ik_frame_);
+
+        //! num grasps
         for (int k =0; k < 100000; k++)
         {
             random.push_back(vdc_pose_bound(cluster_min,cluster_max,k));
@@ -1188,25 +1367,26 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
         // should have points of cluster we want to grasp inside
 
         //check ik first
-        if (1)
-        {
-            checkGraspsIK(arm,fixed_to_ik,random,ik_checked);
-            ROS_INFO("checked for reachability, %zu reachable grasp candidates", ik_checked.size());
-            checkGrasps(clusters[max_idx],ik_checked,filtered);
-        }
-        else
-        {
-            checkGrasps(clusters[max_idx],random,filtered);
-        }
+        //if (1)
+        //{
+        checkGraspsIK(arm,fixed_to_ik,random,ik_checked);
+        ROS_INFO("checked for reachability, %zu reachable grasp candidates", ik_checked.size());
+        checkGrasps(clusters[max_idx],ik_checked,filtered);
+        //}
+        //else
+        //{
+        //checkGrasps(clusters[max_idx],random,filtered);
+        //}
         //checkGrasps(clusters[max_idx],random,filtered);
         std::cout << "number of filtered grasps : " << filtered.size() << " out of " << random.size() << std::endl;
         // should not collide with other points either
-        checkGrasps(cloud_in_box,filtered,checked);
-        std::cout << "number of checked grasps : " << checked.size() << " out of " << filtered.size() << std::endl;
+        //checkGrasps(cloud_in_box,filtered,checked,&normals);
+        checkGrasps(cloud_in_box,filtered,reachable,&normals,&centers);
+        //std::cout << "number of checked grasps : " << checked.size() << " out of " << filtered.size() << std::endl;
         ROS_INFO("tock");
         //checkGrasps(cloud_in_box,random,checked);
 
-        checkGraspsIK(arm,fixed_to_ik,checked,reachable);
+        //checkGraspsIK(arm,fixed_to_ik,checked,reachable);
 
         std::cout << "number of reachable grasps : " << reachable.size() << " out of " << checked.size() << std::endl;
 
@@ -1367,18 +1547,25 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
         collision_testing.publish_markers = true;
         ct_full_env.publish_markers = true;
 
+        //finish();
+
+
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_normalvis(new pcl::PointCloud<pcl::PointXYZRGB>);
+
         std::vector<double> collision_free_pushfactor;
         //while (ros::ok())
         {
-
 
             collision_free.clear();
 
             size_t min_remaining = object_posterior_belief.size() + 1;
 
 
-            for (std::vector<tf::Pose>::iterator it = reachable.begin(); (it!=reachable.end()) && ros::ok(); ++it)
+            //for (std::vector<tf::Pose>::iterator it = reachable.begin(); (it!=reachable.end()) && ros::ok(); ++it)
+            for (size_t sit = 0 ; sit < reachable.size() ; sit++)
             {
+                tf::Pose *it = &reachable[sit];
+
                 //std::cout << "tick" << std::endl;
                 // get this from grip model
 
@@ -1425,10 +1612,33 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
                         lowest_z = push.getOrigin().z() ;
                     }
 
+                    tf::Transform normal_pose;
+                    normal_pose.setOrigin(normals[sit]);
+                    normal_pose.setRotation(tf::Quaternion(0,0,0,1));
+                    normal_pose = fixed_to_ik.inverseTimes(normal_pose);
+                    tf::Vector3 normal = normal_pose.getOrigin();
+
+                    tf::Transform center_pose;
+                    center_pose.setOrigin(centers[sit]);
+                    center_pose.setRotation(tf::Quaternion(0,0,0,1));
+                    center_pose = fixed_to_ik.inverseTimes(center_pose);
+                    tf::Vector3 center = center_pose.getOrigin();
+
+                    normal = normal - center;
+
                     //!check effect of pushing
                     tf::Vector3 push_vector = push.getOrigin() - approach.getOrigin();
                     std::cout << "PUSH VECTOR" << push_vector.x() << " "<< push_vector.y() << " "<< push_vector.z() << std::endl;
+
+                    std::cout << "PUSH normal                             " << normal.x() << " "<< normal.y() << " "<< normal.z() << " " << std::endl;
+
+                    double cos_angle = fabs(cos(push_vector.angle(normal)));
+
+                    std::cout << "cosangle" << cos_angle <<  " angle " << push_vector.angle(normal) << std::endl;
+
                     // how far do we push until we touch the object ?
+
+
                     double amt_step = .01;
                     double amt_free = 0;
                     for (double amt = 0; amt <= 1.001; amt += amt_step)
@@ -1438,12 +1648,48 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
                         check_pose.getOrigin() = (in_ik_frame.getOrigin() * (1 - amt)) + (in_ik_frame_push.getOrigin() * amt);
                         bool inCo = ct_full_env.inCollision(arm,check_pose);
 
-                        //std::cout << amt << " inco " <<  (inCo ? "true " : "false ") << amt_free << std::endl;
-
                         if (inCo)
                             amt = 100;
                         else
                             amt_free = amt;
+                    }
+
+                    //std::cout << amt << " inco " <<  (inCo ? "true " : "false ") << amt_free << std::endl;
+                    int cnt = 0;
+                    for (double amt = 0; amt <= 10; amt += amt_step)
+                    {
+                        // visualize normals
+                        cnt++;
+                        tf::Pose check_pose = in_ik_frame;
+                        check_pose.getOrigin() = (in_ik_frame.getOrigin() * (1 - amt)) + (in_ik_frame_push.getOrigin() * amt);
+
+                        pcl::PointXYZRGB pt;
+                        pt.x = check_pose.getOrigin().x();
+                        pt.y = check_pose.getOrigin().y();
+                        pt.z = check_pose.getOrigin().z();
+                        pt.r = cos_angle * 255;
+                        pt.g = 50;
+                        pt.b = 50;
+                        cloud_normalvis->points.push_back(pt);
+
+                        if (cnt > 10)
+                            cnt = 0;
+
+                        if (cnt == 0)
+                            for (double len = 0; len < 0.05; len+= 0.001)
+                            {
+                                /*pt.x = check_pose.getOrigin().x() +  normal.x() * len;
+                                pt.y = check_pose.getOrigin().y() + normal.y() * len;
+                                pt.z = check_pose.getOrigin().z() + normal.z() * len;*/
+                                pt.x = center.x() + normal.x() * len;
+                                pt.y = center.y() + normal.y() * len;
+                                pt.z = center.z() + normal.z() * len;
+                                pt.r = 0;
+                                pt.g = 0;
+                                pt.b = 250;
+                                cloud_normalvis->points.push_back(pt);
+                            }
+
                     }
 
                     std::cout <<  "AMT FRE" << amt_free << std::endl;
@@ -1470,14 +1716,13 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
                     std::cout <<  "END FREE" << end_free << std::endl;
                     std::cout <<  "              gives us " << end_free - amt_free << std::endl;
 
-
                     tf::Transform push_transform;
                     push_transform.setOrigin(tf::Vector3(push_vector.x(),push_vector.y(),0));
                     push_transform.setRotation(tf::Quaternion(0,0,0,1));
 
                     //push_transform.setOrigin(push_transform.getOrigin() * (1-amt_free));
 
-                    push_transform.setOrigin(push_transform.getOrigin() * ( end_free - amt_free));
+                    push_transform.setOrigin(push_transform.getOrigin() * ( end_free - amt_free) * cos_angle);
 
                     std::cout << "Vector length" << push_transform.getOrigin().length() << std::endl;
 
@@ -1510,11 +1755,12 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
                     //exit(0);
                 }
             }
-            //}
 
             std::cout << "number of collision free grasps : " << collision_free.size() << " out of " << reachable.size() << std::endl;
 
         }
+
+        pubCloud("normals", cloud_normalvis, "torso_lift_link");
 
         //finish();
 
@@ -1545,11 +1791,11 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
             push = getPoseIn("torso_lift_link",actPose);
 
             std::cout << push.getOrigin().z() << std::endl;
-            RobotArm::getInstance(0)->move_arm_joint(result);
+            RobotArm::getInstance(arm)->move_arm_joint(result);
             ros::Duration(1).sleep();
             ros::Duration(1).sleep();
-            RobotArm::getInstance(0)->move_arm_joint(result_push);
-            RobotArm::getInstance(0)->move_arm_joint(result);
+            RobotArm::getInstance(arm)->move_arm_joint(result_push);
+            RobotArm::getInstance(arm)->move_arm_joint(result);
             //RobotArm::getInstance(0)->move_arm_via_ik(approach);
             //RobotArm::getInstance(0)->move_arm_via_ik(push);
             //RobotArm::getInstance(0)->move_arm_via_ik(approach);
@@ -1558,7 +1804,8 @@ void planStep(TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vec
 
     }
 
-
+    //return collision_free.size();
+    return 0;
 
     /*
        //! show object point cloud at different remaining hypothetical positions
@@ -1672,13 +1919,20 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
     }
     ROS_INFO("samples created");
 
+    int arm = 0;
+
     while (ros::ok())
     {
 
         if (!data_from_bag)
             getCloud(cloud, fixed_frame_, ros::Time::now());
 
-        planStep(obj, apriori_belief, aposteriori_belief, cloud, bb_min, bb_max, fixed_to_ik, sensor_in_fixed);
+        planStep(arm, obj, apriori_belief, aposteriori_belief, cloud, bb_min, bb_max, fixed_to_ik, sensor_in_fixed);
+
+        if (arm == 0)
+            arm = 1;
+        else
+            arm = 0;
 
         ROS_ERROR("PRE %zu POST %zu", apriori_belief.size(), aposteriori_belief.size());
 
@@ -2088,8 +2342,8 @@ int main(int argc,char **argv)
 
 //    while (ros::ok())
     //{
-  //      rt.sleep();
-      //  ros::spinOnce();
+    //      rt.sleep();
+    //  ros::spinOnce();
     //}
 
 
