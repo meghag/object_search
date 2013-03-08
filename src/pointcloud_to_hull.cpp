@@ -731,7 +731,6 @@ std::vector<tf::StampedTransform> transforms_from_planning_response; // for tf p
 int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vector<tf::Pose> &object_posterior_belief, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,tf::Vector3 bb_min, tf::Vector3 bb_max, tf::Stamped<tf::Pose> fixed_to_ik, tf::Stamped<tf::Pose> sensor_in_fixed)
 {
     GraspPlanning grasp;
-    grasp.initGrasps();
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_table (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZ>);
@@ -946,24 +945,21 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         ROS_INFO("tick");
         // should have points of cluster we want to grasp inside
 
-        //check ik first
-        //if (1)
-        //{
+
+        ROS_INFO("BEFORE CHECKING GRASPS");
         grasp.checkGraspsIK(arm,fixed_to_ik,random,ik_checked);
         ROS_INFO("checked for reachability, %zu reachable grasp candidates", ik_checked.size());
         grasp.checkGrasps(clusters[max_idx],ik_checked,filtered);
-        //}
-        //else
-        //{
-        //checkGrasps(clusters[max_idx],random,filtered);
-        //}
-        //checkGrasps(clusters[max_idx],random,filtered);
+
         std::cout << "number of filtered grasps : " << filtered.size() << " out of " << random.size() << std::endl;
-        // should not collide with other points either
-        //checkGrasps(cloud_in_box,filtered,checked,&normals);
+
+        // check against general collision
         std::vector<tf::Vector3> normals, centers;
         std::vector<int> grasp_indices;
         grasp.checkGrasps(cloud_in_box,filtered,reachable,&grasp_indices,&normals,&centers);
+
+        ROS_INFO("AFTER CHECKING GRASPS");
+
         //std::cout << "number of checked grasps : " << checked.size() << " out of " << filtered.size() << std::endl;
         ROS_INFO("tock");
         //checkGrasps(cloud_in_box,random,checked);
@@ -1114,9 +1110,9 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         int lowest_idx = -1;
         double lowest_z = 1000;
 
-        tf::Transform rel;
-        rel.setOrigin(tf::Vector3(0.1,0,0));
-        rel.setRotation(tf::Quaternion(0,0,0,1));
+        //tf::Transform rel;
+        //rel.setOrigin(tf::Vector3(0.1,0,0));
+        //rel.setRotation(tf::Quaternion(0,0,0,1));
 
 
         //! checking cycle
@@ -1148,9 +1144,9 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
             {
                 tf::Pose *it = &reachable[sit];
 
+                tf::Transform rel = grasp.grasps[grasp_indices[sit]].approach[0];
                 //std::cout << "tick" << std::endl;
                 // get this from grip model
-
 
                 tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(*it);
 
@@ -1229,7 +1225,9 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                         // visualize normals
                         cnt++;
                         tf::Pose check_pose = in_ik_frame;
-                        check_pose.getOrigin() = (in_ik_frame.getOrigin() * (1 - amt)) + (in_ik_frame_push.getOrigin() * amt);
+                        check_pose.getOrigin() = in_ik_frame.getOrigin() + push_vector * amt;
+
+                        //(in_ik_frame.getOrigin() * (1 - amt)) + (in_ik_frame_push.getOrigin() * amt);
 
                         pcl::PointXYZRGB pt;
                         pt.x = check_pose.getOrigin().x();
@@ -1340,6 +1338,8 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
             std::cout <<" TIME " <<  ((size_t)ros::Time::now().toSec()) << std::endl;
 
             lowest_idx = ((size_t)ros::Time::now().toSec()) % collision_free.size();
+
+            tf::Transform rel = grasp.grasps[grasp_indices[lowest_idx]].approach[0];
 
             double factor = collision_free_pushfactor[lowest_idx];
             tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(collision_free[lowest_idx]);

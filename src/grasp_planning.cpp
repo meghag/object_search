@@ -100,6 +100,11 @@ bool GraspPlanning::inside(tf::Vector3 point, tf::Vector3 bbmin, tf::Vector3 bbm
 
 void GraspPlanning::checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked, std::vector<int> *grasp_index, std::vector<tf::Vector3> *normals, std::vector<tf::Vector3> *centers)
 {
+    //caching coords doesnt seem to make anything faster
+    // we probably fail in the first pass most often and making it more expensive
+    // is not outweighted by speedups in the following passes, also, multiplying is faster than memory access?
+    //std::vector<tf::Vector3> point_cache;
+    //point_cache.resize(cloud->points.size());
 
     for (int gidx = 0; gidx < grasps.size(); gidx++)
     {
@@ -124,16 +129,26 @@ void GraspPlanning::checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std:
             //for each point, points first so that we transform only once, do not transform full pointcloud as we might get lucky and hit a point early
             // and thus not need to transform all of them
             //for (int i = 0; (i < cloud->points.size()) && good; ++i)
-            for (size_t i = 0; (i < cloud->points.size()) && good; ++i)
-            {
-                tf::Vector3 curr(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z);
-                // project point to gripper coordinates
-                curr = (*it).inverse() * curr;
 
-                // check each defined bounding box
-                //for (int k = 0; (k < bb_min.size()) && good; ++k)
-                for (size_t k = 0; (k < act.bb_min.size()); ++k)
+            //transform points only once
+            //bool firstpass = true;
+
+            for (size_t k = 0; (k < act.bb_min.size()) && good; ++k)
+            {
+                for (size_t i = 0; (i < cloud->points.size()) && good; ++i)
                 {
+
+                    tf::Vector3 curr;
+                    //if (first_pass)
+                    //{
+                    curr = tf::Vector3(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z);
+                    // project point to gripper coordinates
+                    curr = (*it).inverse() * curr;
+                    // point_cache[i] = curr;
+                    //}
+                    //else
+                    //  curr = point_cache[i];
+
                     if (inside(curr, act.bb_min[k], act.bb_max[k]))
                     {
                         bb_cnt[k]++;
@@ -142,17 +157,21 @@ void GraspPlanning::checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std:
                         else
                             points_inside.push_back(tf::Vector3(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z));
                     }
-
                 }
+                if ((act.bb_full[k]) && (points_inside.size() < 50))
+                    good = false;
+
+                //first_pass = false;
             }
+
 
             //std::cout << std::endl;
-            for (size_t j = 0; j < act.bb_min.size(); j++)
-            {
-                //! arbitrary threshold 10 magix number, why ten points min?
-                if (act.bb_full[j] && (bb_cnt[j] < 10))
-                    good = false;
-            }
+            //for (size_t j = 0; j < act.bb_min.size(); j++)
+            //{
+              //  //! arbitrary threshold 10 magix number, why ten points min?
+                //if (act.bb_full[j] && (bb_cnt[j] < 10))
+                  //  good = false;
+            //}
 
             if (good)
             {
@@ -172,10 +191,10 @@ void GraspPlanning::checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std:
 
                     normal = normal.normalized();
 
-                    std::cout << "evec0" << evec[0].x() << " " << evec[0].y() << " " << evec[0].z() << std::endl;
-                    std::cout << "evec1" << evec[1].x() << " " << evec[1].y() << " " << evec[1].z() << std::endl;
-                    std::cout << "evec2" << evec[2].x() << " " << evec[2].y() << " " << evec[2].z() << std::endl;
-                    std::cout << "NORM                                                 " << normal.x() << " " << normal.y() << " " << normal.z() << " pt in " << points_inside.size() << std::endl;
+                    //std::cout << "evec0" << evec[0].x() << " " << evec[0].y() << " " << evec[0].z() << std::endl;
+                    //std::cout << "evec1" << evec[1].x() << " " << evec[1].y() << " " << evec[1].z() << std::endl;
+                    //std::cout << "evec2" << evec[2].x() << " " << evec[2].y() << " " << evec[2].z() << std::endl;
+                    //std::cout << "NORM                                                 " << normal.x() << " " << normal.y() << " " << normal.z() << " pt in " << points_inside.size() << std::endl;
 
                     //normals->push_back(normal);
 
