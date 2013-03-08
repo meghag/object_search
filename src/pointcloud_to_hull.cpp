@@ -179,237 +179,6 @@ bool inside(tf::Vector3 point, tf::Vector3 bbmin, tf::Vector3 bbmax)
         return false;
 }
 
-/*
-class BoxSet
-{
-public:
-
-    //void create_marker
-
-    std::vector<tf::Vector3> bb_min;
-    std::vector<tf::Vector3> bb_max;
-    std::vector<bool> bb_full;
-};
-
-
-void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked, std::vector<tf::Vector3> *normals = 0L, std::vector<tf::Vector3> *centers= 0L)
-{
-    // min coordinates of aabb
-    //std::vector<tf::Vector3> bb_min;
-    // max coordinates of aabb
-    //std::vector<tf::Vector3> bb_max;
-    // should this bounding box be empty => true or should contain a point => false
-    //std::vector<bool> bb_full;
-
-    BoxSet act;
-
-    if(0)
-    {
-        //push forward open grip
-        act.bb_min.push_back(tf::Vector3(0.23,-0.05,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.24,-0.03,0.02));
-        act.bb_full.push_back(true);
-
-        act.bb_min.push_back(tf::Vector3(0.23,0.03,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.24,0.05,0.02));
-        act.bb_full.push_back(true);
-
-        act.bb_min.push_back(tf::Vector3(0.18,0.03,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.23,0.09,0.02));
-        act.bb_full.push_back(false);
-
-        act.bb_min.push_back(tf::Vector3(0.18,-0.09,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.23,-0.03,0.02));
-        act.bb_full.push_back(false);
-
-        act.bb_min.push_back(tf::Vector3(-0.02,-0.09,-0.03));
-        act.bb_max.push_back(tf::Vector3(0.18,0.09,0.03));
-        act.bb_full.push_back(false);
-    }
-
-
-    if (1)
-    {
-        //push forward closed gripper
-        act.bb_min.push_back(tf::Vector3(0.23,-0.01,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.26,0.01,0.02));
-        act.bb_full.push_back(true);
-
-        act.bb_min.push_back(tf::Vector3(0.23,-0.01,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.26,0.01,0.02));
-        act.bb_full.push_back(true);
-
-        act.bb_min.push_back(tf::Vector3(0.18,-3.46945e-18,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.23,0.04,0.02));
-        act.bb_full.push_back(false);
-
-        act.bb_min.push_back(tf::Vector3(0.18,-0.04,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.23,3.46945e-18,0.02));
-        act.bb_full.push_back(false);
-
-        act.bb_min.push_back(tf::Vector3(-0.02,-0.06,-0.03));
-        act.bb_max.push_back(tf::Vector3(0.18,0.06,0.03));
-        act.bb_full.push_back(false);
-
-
-    }
-
-
-    tf::Pose push;
-    push.setOrigin(tf::Vector3(0.01,0,0));
-    push.setRotation(tf::Quaternion(0,0,0,1));
-    //act.approach.push_back(push);
-
-    //act.name = "push_forward";
-
-    std::vector<size_t> bb_cnt;
-    bb_cnt.resize(act.bb_min.size());
-
-    std::vector<tf::Vector3> points_inside;
-
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_normalvis(new pcl::PointCloud<pcl::PointXYZRGB>);
-
-    // for each grasp
-    for (std::vector<tf::Pose>::iterator it = unchecked.begin(); it!=unchecked.end(); ++it)
-    {
-
-        points_inside.clear();
-        std::fill( bb_cnt.begin(), bb_cnt.end(), 0 );
-
-        bool good = true;
-
-        //for each point, points first so that we transform only once, do not transform full pointcloud as we might get lucky and hit a point early
-        // and thus not need to transform all of them
-        //for (int i = 0; (i < cloud->points.size()) && good; ++i)
-        for (size_t i = 0; (i < cloud->points.size()) && good; ++i)
-        {
-            tf::Vector3 curr(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z);
-            // project point to gripper coordinates
-            curr = (*it).inverse() * curr;
-
-            // check each defined bounding box
-            //for (int k = 0; (k < bb_min.size()) && good; ++k)
-            for (size_t k = 0; (k < act.bb_min.size()); ++k)
-            {
-                if (inside(curr, act.bb_min[k], act.bb_max[k]))
-                {
-                    bb_cnt[k]++;
-                    if (!act.bb_full[k])
-                        good = false;
-                    else
-                        points_inside.push_back(tf::Vector3(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z));
-                }
-
-            }
-        }
-
-        //std::cout << std::endl;
-        for (size_t j = 0; j < act.bb_min.size(); j++)
-        {
-            //! arbitrary threshold 10 magix number, why ten points min?
-            if (act.bb_full[j] && (bb_cnt[j] < 10))
-                good = false;
-        }
-
-        if (good)
-        {
-            std::vector<tf::Vector3> evec;
-            std::vector<double> eval;
-
-            checked.push_back(*it);
-
-            //for (int j = 0; j < bb_min.size(); j++)
-            //std::cout << "bb_cnt" << j << " : " << bb_cnt[j] << std::endl;
-
-            if (normals)
-            {
-                pos_eigen_xy(points_inside, evec, eval);
-                //tf::Vector3 normal = evec[0].cross(evec[1]);
-                tf::Vector3 normal = evec[2];
-
-                normal = normal.normalized();
-
-                std::cout << "evec0" << evec[0].x() << " " << evec[0].y() << " " << evec[0].z() << std::endl;
-                std::cout << "evec1" << evec[1].x() << " " << evec[1].y() << " " << evec[1].z() << std::endl;
-                std::cout << "evec2" << evec[2].x() << " " << evec[2].y() << " " << evec[2].z() << std::endl;
-                std::cout << "NORM                                                 " << normal.x() << " " << normal.y() << " " << normal.z() << " pt in " << points_inside.size() << std::endl;
-
-                //normals->push_back(normal);
-
-                tf::Vector3 avg(0,0,0);
-                for (size_t k = 0; k < points_inside.size(); ++k)
-                {
-                    pcl::PointXYZRGB pt;
-                    pt.x = points_inside[k].x();
-                    pt.y = points_inside[k].y();
-                    pt.z = points_inside[k].z();
-                    pt.r = 250;
-                    pt.g = 50;
-                    pt.b = 50;
-                    cloud_normalvis->points.push_back(pt);
-
-                    avg+= points_inside[k];
-                }
-
-                if (points_inside.size() > 0)
-                    avg = (1 /  (double)points_inside.size()) * avg;
-
-                tf::Vector3 norm = evec[2].normalize();
-
-                for (int coord = 0 ; coord < 3; coord++)
-                for (double len = 0; len < 0.05; len+= 0.001)
-                {
-                    pcl::PointXYZRGB pt;
-                    pt.x = avg.x() + evec[coord].x() * len;
-                    pt.y = avg.y() + evec[coord].y() * len;
-                    pt.z = avg.z() + evec[coord].z() * len;
-                    //pt.x = avg.x() + norm.x() * len;
-                    //pt.y = avg.y() + norm.y() * len;
-                    //pt.z = avg.z() + norm.z() * len;
-                    pt.r = ((coord == 0) ? 255 : 0);
-                    pt.g = ((coord == 1) ? 255 : 0);
-                    pt.b = ((coord == 2) ? 255 : 0);
-                    cloud_normalvis->points.push_back(pt);
-                }
-
-                normals->push_back(avg + norm);
-                if (centers)
-                    centers->push_back(avg);
-
-            }
-
-        }
-
-
-    }
-
-    if (normals) {
-        pubCloud("normals", cloud_normalvis, fixed_frame_);
-        //finish();
-    }
-
-    ros::Duration(.5).sleep();
-}
-
-
-void checkGraspsIK(int arm, tf::Stamped<tf::Pose> fixed_to_ik, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked)
-{
-    std::vector<double> result;
-    result.resize(7);
-    std::fill( result.begin(), result.end(), 0 );
-
-    for (std::vector<tf::Pose>::iterator it = unchecked.begin(); it!=unchecked.end(); ++it)
-    {
-        tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(*it);
-        if (get_ik(arm, in_ik_frame, result) == 1)
-            checked.push_back(*it);
-    }
-
-}
-*/
-
-
-
 tf::TransformListener*listener_ = 0L;
 
 ros::Publisher *vis_pub_ = 0L;
@@ -435,11 +204,6 @@ void init()
     }
     if (!br)
         br = new tf::TransformBroadcaster();
-    //if (!pose_ary_pub_)
-    //{
-    //pose_ary_pub_ = new ros::Publisher();
-    //>*pose_ary_pub_ = nh_->advertise<geometry_msgs::PoseArray>("vdc_poses",0,true);
-    //}
 }
 
 gpc_polygon last;
@@ -1387,21 +1151,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
 
                 tf::Pose in_ik_frame_push = in_ik_frame * rel;
 
-                /*if ((get_ik(arm, in_ik_frame, result) == 1)
-                        && (get_ik(arm, in_ik_frame_push, result_push) == 1))
-                {
 
-
-                    //bool inCollision = collision_testing.inCollision(arm, result);
-                    ROS_INFO("pre");
-                    bool inCollision = ct_full_env.inCollision(arm, result);
-
-                    //ros::Duration(0.3).sleep();
-
-                    inCollision |= collision_testing.inCollision(arm, result_push);
-
-                    ROS_INFO("post");
-                    if (!inCollision)*/
                 if ((!ct_full_env.inCollision(arm, in_ik_frame)) && (!collision_testing.inCollision(arm,in_ik_frame_push)))
                 {
 
@@ -1609,9 +1359,6 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
             ros::Duration(1).sleep();
             RobotArm::getInstance(arm)->move_arm_joint(result_push);
             RobotArm::getInstance(arm)->move_arm_joint(result);
-            //RobotArm::getInstance(0)->move_arm_via_ik(approach);
-            //RobotArm::getInstance(0)->move_arm_via_ik(push);
-            //RobotArm::getInstance(0)->move_arm_via_ik(approach);
 
         }
 
@@ -1761,55 +1508,6 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
 }
 
 
-
-void  test_vdc()
-{
-    /*for (int base = 0; base < 6; ++base)
-    {
-        std::cout << "Base " << base << " : " << bases[base] << "\n";
-        for (int n = 0; n <= bases[base] * 2 + 1 ; ++n)
-        {
-            std::cout << vdc(n, (float) bases[base]) << " ";
-        }
-        std::cout << "\n\n";
-    }*/
-
-    ros::Publisher pose_ary_pub = nh_->advertise<geometry_msgs::PoseArray>("vdc_poses",0,true);
-
-    geometry_msgs::PoseArray ps_ary;
-    ps_ary.header.frame_id = fixed_frame_;
-
-    int n = 0;
-
-    ros::Rate rt(5);
-
-    while (ros::ok())
-    {
-
-        for (int i=0; i < 1000; i++)
-        {
-            tf::Pose act = VanDerCorput::vdc_pose(n++);
-            geometry_msgs::Pose pose_msg;
-            tf::poseTFToMsg(act, pose_msg);
-            //std::cout << pose_msg << std::endl;
-            ps_ary.poses.push_back(pose_msg);
-        }
-
-        pose_ary_pub.publish(ps_ary);
-
-        rt.sleep();
-
-        ros::spinOnce();
-    }
-
-}
-//2 3 5 7 11 13 17
-
-void test_search()
-{
-
-}
-
 tf::Stamped<tf::Pose> fixed_to_ik;
 tf::StampedTransform sensor_in_ik;
 
@@ -1843,48 +1541,8 @@ void tf_broadcaster_thread()
         //br->sendTransform(sensor_in_ik);
         rt.sleep();
     }
-
-    /*
-       ros::Rate rt(1);
-
-       tf::Stamped<tf::Pose> torso_in_odom;
-       torso_in_odom.frame_id_ = "odom_combined";
-       //torso_in_odom.setOrigin(tf::Vector3(0,0,0.33));
-       torso_in_odom.setOrigin(tf::Vector3(0,0,.33));
-       torso_in_odom.setRotation(tf::Quaternion(0,0,0,1));
-
-       geometry_msgs::PoseStamped fixed_to_ik_msg;
-       tf::Stamped<tf::Pose> inverted = fixed_to_ik;
-       inverted.setData(inverted.inverse());
-       tf::poseStampedTFToMsg(fixed_to_ik,fixed_to_ik_msg);
-
-       std::cout << "fixed_to_ik in bagfile " << fixed_to_ik_msg << std::endl;
-
-       tf::poseStampedTFToMsg(inverted,fixed_to_ik_msg);
-
-       std::cout << "fixed_to_ik in bagfile inverted " << fixed_to_ik_msg << std::endl;
-
-       while (ros::ok())
-       {
-           // torso_lift_link to tum_os_table
-           br->sendTransform(tf::StampedTransform(fixed_to_ik, ros::Time::now(), ik_frame_, fixed_frame_));
-           rt.sleep();
-           // odom_combined to torso_lift_link
-           br->sendTransform(tf::StampedTransform(torso_in_odom, ros::Time::now(), "odom_combined", ik_frame_));
-           rt.sleep();
-
-           if (map_to_odom_set)
-           {
-               br->sendTransform(tf::StampedTransform(map_to_odom, ros::Time::now(), "odom_combined", "map"));
-               rt.sleep();
-           }
-
-           //std::cout << "blip" << std::endl;
-       }
-       */
 }
 
-//include "../include/robothead.h"
 
 int main(int argc,char **argv)
 {
@@ -1914,7 +1572,6 @@ int main(int argc,char **argv)
         data_bag_name = argv[2];
     }
 
-    //RobotHead()
 
     // test arm motion
 
@@ -1924,49 +1581,13 @@ int main(int argc,char **argv)
         exit(0);
     }
 
-    //exit(0);
-
-    //test_vdc();
-
-    //test_search();
 
     ros::Rate rt(1);
-
-    //while (ros::ok())
-    //{
-    //  rt.sleep();
-    //test_hull_calc();
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
     //tf::Stamped<tf::Pose> fixed_to_ik;
     tf::Stamped<tf::Pose> sensor_in_fixed;
 
-
-    /*if (data_from_bag)
-    {
-        arm_navigation_msgs::GetPlanningScene::Response *planning_scene_res;
-        planning_scene_res = new arm_navigation_msgs::GetPlanningScene::Response ();\
-        std::string filename = "planning_scene_res.bag";
-
-        rosbag::Bag bag;
-        bag.open(filename, rosbag::bagmode::Read);
-
-        rosbag::View view(bag);
-
-        BOOST_FOREACH(rosbag::MessageInstance const m, view)
-        {
-            std::cout << "m.getTopic" << m.getTopic() << std::endl;
-            if (m.getTopic() == "planning_scene_res")
-            {
-                std::cout << "Got the planning scene response from bagfile " << filename << std::endl;
-                arm_navigation_msgs::GetPlanningSceneResponse::ConstPtr msg_in = m.instantiate<arm_navigation_msgs::GetPlanningSceneResponse>();
-                *planning_scene_res = *msg_in;
-                planning_scene_res->planning_scene.collision_map.boxes.clear();
-                //std::cout << *planning_scene_res << std::endl;
-                //pcl::fromROSMsg(*msg_in, *cloud);
-            }
-        }
-    }*/
 
     if (!data_from_bag)
     {
@@ -1995,44 +1616,7 @@ int main(int argc,char **argv)
     else
     {
 
-        /*
-
-        fixed frame header:
-          seq: 0
-          stamp: 1352303530.162666972
-          frame_id: odom_combined
-        child_frame_id: tum_os_table
-        transform:
-          translation:
-            x: 0.340477
-            y: -0.523673
-            z: -0.739989
-          rotation:
-            x: 0.00536571
-            y: -0.00617949
-            z: 0.697902
-            w: 0.716146
-
-        fixed_to_ik in bagfile header:
-          seq: 0
-          stamp: 1353333899.758390934
-          frame_id: /tum_os_table
-        pose:
-          position:
-            x: 0.201368
-            y: -0.463186
-            z: 0.333089
-          orientation:
-            x: -0.000498488
-            y: 0.00269517
-            z: 0.693091
-            w: 0.720845
-
-
-
-        */
-
-        rosbag::Bag bag;
+       rosbag::Bag bag;
         bag.open(data_bag_name, rosbag::bagmode::Read);
 
         rosbag::View view(bag);
@@ -2059,15 +1643,6 @@ int main(int argc,char **argv)
         fixed_to_ik.setOrigin(tf::Vector3(0.364, -0.676, 0.341));
         fixed_to_ik.setRotation(tf::Quaternion(0.000, -0.001, 0.751, 0.660));
         //base_footprint to torso_lift_link
-        //- Translation: [-0.050, 0.000, 1.081]
-        //- Rotation: in Quaternion [0.000, 0.000, 0.000, 1.000]
-        //      in RPY [0.000, -0.000, 0.000]
-
-//- Translation: [0.364, -0.676, 0.341]
-//- Rotation: in Quaternion [0.000, -0.001, 0.751, 0.660]
-        //          in RPY [-0.001, -0.001, 1.700]
-
-
 
         sensor_in_ik.setData(fixed_to_ik.inverseTimes(sensor_in_fixed));
         sensor_in_ik.child_frame_id_= rgb_optical_frame_;
@@ -2101,33 +1676,7 @@ int main(int argc,char **argv)
 
                 tf::StampedTransform act;
                 tf::transformStampedMsgToTF(collision_testing.planning_scene.fixed_frame_transforms[i], act);
-                //geometry_msgs/TransformStamped[]
-                //std::string tmp = act.frame_id_;
-                //act.frame_id_ = act.child_frame_id_;
-                //act.child_frame_id_ = tmp;
-                //act.setData(act.inverse());
-                //!transforms_from_planning_response.push_back(act);
 
-                //if (collision_testing.planning_scene_res.planning_scene.fixed_frame_transforms[i].child_frame_id == "map")
-                //if (collision_testing.planning_scene_res.planning_scene.fixed_frame_transforms[i].header.frame_id== "odom_combined")
-                //{
-                //ROS_ERROR("NOT AN ERROR");
-                //tf::transformMsgToTF(collision_testing.planning_scene_res.planning_scene.fixed_frame_transforms[i].transform, map_to_odom);
-                //map_to_odom_set = true;
-                //}
-
-                /*if (0)
-                if (collision_testing.planning_scene_res.planning_scene.fixed_frame_transforms[i].child_frame_id == "tum_os_table")
-                {
-                    hit = i;
-                    std::cout << "HIT" << i << std::endl;
-                    geometry_msgs::Transform odom_to_tumos;
-                    tf::transformTFToMsg(fixed_to_ik,odom_to_tumos);
-                    odom_to_tumos.translation.z = -.74;
-                    collision_testing.planning_scene_res.planning_scene.fixed_frame_transforms[i].transform = odom_to_tumos;
-
-                    std::cout << "fixed frame modified " << collision_testing.planning_scene_res.planning_scene.fixed_frame_transforms[i] << std::endl;
-                }*/
             }
 
             //for (size_t j = 0; j < collision_testing.fixed_frame_transforms.size(); j++)
@@ -2148,13 +1697,5 @@ int main(int argc,char **argv)
     testOctomap(cloud, fixed_to_ik, sensor_in_fixed);
 
     finish();
-    //}
-
-//    while (ros::ok())
-    //{
-    //      rt.sleep();
-    //  ros::spinOnce();
-    //}
-
 
 }
