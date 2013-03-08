@@ -1271,7 +1271,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                     {
 
                         tf::Pose check_pose = in_ik_frame;
-                        check_pose.getOrigin() = in_ik_frame.getOrigin() + end * in_ik_frame_push.getOrigin() - in_ik_frame.getOrigin();
+                        check_pose.getOrigin() = in_ik_frame.getOrigin() + end * (in_ik_frame_push.getOrigin() - in_ik_frame.getOrigin());
 
                         bool inCo = collision_testing.inCollision(arm,check_pose);
 
@@ -1352,6 +1352,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
             double factor = collision_free_pushfactor[lowest_idx];
             tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(collision_free[lowest_idx]);
             tf::Pose in_ik_frame_push = in_ik_frame * rel;
+
             in_ik_frame_push.getOrigin() = in_ik_frame.getOrigin() + factor * (in_ik_frame_push.getOrigin() - in_ik_frame.getOrigin());
 
             get_ik(arm, in_ik_frame, result);
