@@ -3,8 +3,14 @@
 
 #include <tf/tf.h>
 #include <pr2_controllers_msgs/JointTrajectoryAction.h>
+#include <pr2_controllers_msgs/Pr2GripperCommandAction.h>
+
 #include <arm_navigation_msgs/MoveArmAction.h>
 #include <actionlib/client/simple_action_client.h>
+
+
+typedef actionlib::SimpleActionClient<pr2_controllers_msgs::Pr2GripperCommandAction> GripperClient;
+
 
 class RobotArm
 {
@@ -26,6 +32,10 @@ public:
 
     int move_arm(tf::Pose goalPose);
 
+    int home_arm();
+
+    void open_gripper(double amount = 0.09);
+
 private:
 
     RobotArm(int side);
@@ -39,6 +49,8 @@ private:
     static RobotArm *instance[];
 
     actionlib::SimpleActionClient<arm_navigation_msgs::MoveArmAction> *move_arm_client_;
+
+    GripperClient* gripper_client_;
 
 
 };

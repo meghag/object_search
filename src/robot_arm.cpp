@@ -7,10 +7,10 @@
 #include <actionlib/client/terminal_state.h>
 #include <pr2_common_action_msgs/ArmMoveIKAction.h>
 #include <tf/transform_listener.h>
-#include <pr2_controllers_msgs/Pr2GripperCommandAction.h>
 #include <kinematics_msgs/GetPositionIK.h>
 #include <kinematics_msgs/PositionIKRequest.h>
 #include <kinematics_msgs/GetPositionFK.h>
+
 
 #include "../include/robot_arm.h"
 
@@ -37,6 +37,8 @@ RobotArm::RobotArm(int side)
 
     move_arm_client_ = new  actionlib::SimpleActionClient<arm_navigation_msgs::MoveArmAction>((side == 0) ? "move_right_arm" : "move_left_arm",true);
     move_arm_client_->waitForServer();
+
+    gripper_client_ = new GripperClient(side ? "l_gripper_controller/gripper_action" : "r_gripper_controller/gripper_action", true);
 }
 
 RobotArm::~RobotArm()
@@ -221,4 +223,37 @@ int RobotArm::move_arm(tf::Pose goalPose)
     }
 
     return -1;
+}
+
+int RobotArm::home_arm()
+{
+    tf::Pose goal;
+
+    if (side_ == 0)
+    {
+        goal.setOrigin(tf::Vector3(0.244, -0.542, 0.049));
+        goal.setRotation(tf::Quaternion(-0.426, 0.091, 0.645, 0.627));
+    }
+    else
+    {
+      goal.setOrigin(tf::Vector3(0.374, 0.527, 0.259));
+      goal.setRotation(tf::Quaternion(-0.536, 0.384, -0.348, 0.666));
+    }
+    return move_arm(goal);
+}
+
+
+void RobotArm::open_gripper(double amount)
+{
+    pr2_controllers_msgs::Pr2GripperCommandGoal open;
+    //open.command.position = 0.085 * amount;
+    open.command.position = amount;
+    open.command.max_effort = -1.0;  // Do not limit effort (negative)
+
+    gripper_client_->sendGoal(open);
+    //gripper_client_->waitForResult();
+    if (gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+        ROS_INFO("The gripper opened!");
+    else
+        ROS_INFO("The gripper failed to open.");
 }
