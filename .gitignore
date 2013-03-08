@@ -5,6 +5,8 @@ data
 lib
 msg_gen
 srv_gen
+cbb
+src/tum_os
 # Ignore all files ending with ~
 *~
 # Ignore the target directory
