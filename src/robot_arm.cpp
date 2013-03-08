@@ -34,6 +34,9 @@ RobotArm::RobotArm(int side)
     traj_client_ = new actionlib::SimpleActionClient< pr2_controllers_msgs::JointTrajectoryAction >((side == 0) ? "/r_arm_controller/joint_trajectory_action" : "/l_arm_controller/joint_trajectory_action", true);
     ROS_INFO("WAITING FOR SERVER TO START");
     traj_client_->waitForServer();
+
+    move_arm_client_ = new  actionlib::SimpleActionClient<arm_navigation_msgs::MoveArmAction>((side == 0) ? "move_right_arm" : "move_left_arm",true);
+    move_arm_client_->waitForServer();
 }
 
 RobotArm::~RobotArm()
@@ -158,4 +161,64 @@ void RobotArm::reset_arms()
 
     RobotArm::getInstance(0)->move_arm_joint(jstate[0]);
     RobotArm::getInstance(1)->move_arm_joint(jstate[1]);
+}
+
+
+#include <arm_navigation_msgs/MoveArmAction.h>
+#include <arm_navigation_msgs/utils.h>
+
+int RobotArm::move_arm(tf::Pose goalPose)
+{
+
+    arm_navigation_msgs::MoveArmGoal goalA;
+
+    goalA.motion_plan_request.group_name = side_ ? "left_arm" : "right_arm";
+    goalA.motion_plan_request.num_planning_attempts = 300;
+    goalA.motion_plan_request.planner_id = std::string("");
+    goalA.planner_service_name = std::string("ompl_planning/plan_kinematic_path");
+    goalA.motion_plan_request.allowed_planning_time = ros::Duration(15.0);
+
+    arm_navigation_msgs::SimplePoseConstraint desired_pose;
+    desired_pose.header.frame_id = "torso_lift_link";
+    desired_pose.header.stamp = ros::Time::now();
+    desired_pose.link_name = side_ ? "l_wrist_roll_link" : "r_wrist_roll_link";
+
+    tf::poseTFToMsg(goalPose, desired_pose.pose);
+
+    std::cout << "Move arm goal pose: " << desired_pose << std::endl;
+
+    desired_pose.absolute_position_tolerance.x = 0.01;
+    desired_pose.absolute_position_tolerance.y = 0.01;
+    desired_pose.absolute_position_tolerance.z = 0.01;
+
+    desired_pose.absolute_roll_tolerance = 0.04;
+    desired_pose.absolute_pitch_tolerance = 0.04;
+    desired_pose.absolute_yaw_tolerance = 0.04;
+
+    arm_navigation_msgs::addGoalConstraintToMoveArmGoal(desired_pose,goalA);
+
+    bool finished_within_time = false;
+
+    move_arm_client_->sendGoal(goalA);
+
+    ros::Duration(.01).sleep();
+
+    finished_within_time = move_arm_client_->waitForResult(ros::Duration(16.0));
+    if (!finished_within_time) {
+        move_arm_client_->cancelGoal();
+        ROS_INFO("DUPLO: Timed out achieving goal A");
+        return -1;
+    } else {
+        actionlib::SimpleClientGoalState state = move_arm_client_->getState();
+        bool success = (state == actionlib::SimpleClientGoalState::SUCCEEDED);
+        if(success) {
+            ROS_INFO("DUPLO: Action finished: %s",state.toString().c_str());
+            return 0;
+        } else {
+            ROS_INFO("DUPLO: Action failed: %s",state.toString().c_str());
+            return -1;
+        }
+    }
+
+    return -1;
 }

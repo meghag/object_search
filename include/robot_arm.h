@@ -3,6 +3,7 @@
 
 #include <tf/tf.h>
 #include <pr2_controllers_msgs/JointTrajectoryAction.h>
+#include <arm_navigation_msgs/MoveArmAction.h>
 #include <actionlib/client/simple_action_client.h>
 
 class RobotArm
@@ -23,6 +24,8 @@ public:
 
     static void reset_arms();
 
+    int move_arm(tf::Pose goalPose);
+
 private:
 
     RobotArm(int side);
@@ -34,6 +37,9 @@ private:
     actionlib::SimpleActionClient< pr2_controllers_msgs::JointTrajectoryAction > *traj_client_;
 
     static RobotArm *instance[];
+
+    actionlib::SimpleActionClient<arm_navigation_msgs::MoveArmAction> *move_arm_client_;
+
 
 };
 
