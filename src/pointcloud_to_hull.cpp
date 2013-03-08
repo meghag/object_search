@@ -53,12 +53,14 @@ std::string data_bag_name = "data.bag";
 
 void start()
 {
-    system("rosservice call gazebo/unpause_physics");
+    int i = system("rosservice call gazebo/unpause_physics");
+    std::cout << "system " << i << std::endl;
 }
 
 void finish()
 {
-    system("rosservice call gazebo/pause_physics");
+    int i = system("rosservice call gazebo/pause_physics");
+    std::cout << "system " << i << std::endl;
     exit(0);
 }
 
@@ -731,6 +733,7 @@ std::vector<tf::StampedTransform> transforms_from_planning_response; // for tf p
 int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vector<tf::Pose> &object_posterior_belief, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,tf::Vector3 bb_min, tf::Vector3 bb_max, tf::Stamped<tf::Pose> fixed_to_ik, tf::Stamped<tf::Pose> sensor_in_fixed)
 {
     GraspPlanning grasp;
+    grasp.visualizeGrasp(0,"r_wrist_roll_link");
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_table (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZ>);
@@ -1091,7 +1094,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         ct_full_env.updateCollisionModel();
 
 
-        ROS_INFO("REACHABLE %zu", reachable.size());
+        //ROS_INFO("REACHABLE %zu", reachable.size());
 
 
         tf::Transform wristy;
@@ -1192,6 +1195,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
 
                     //!check effect of pushing
                     tf::Vector3 push_vector = push.getOrigin() - approach.getOrigin();
+                    std::cout << "PUSH REL idx " << grasp_indices[sit] << " vec "<< rel.getOrigin().x() << " "<< rel.getOrigin().y() << " "<< rel.getOrigin().z() << std::endl;
                     std::cout << "PUSH VECTOR" << push_vector.x() << " "<< push_vector.y() << " "<< push_vector.z() << std::endl;
 
                     std::cout << "PUSH normal                             " << normal.x() << " "<< normal.y() << " "<< normal.z() << " " << std::endl;
@@ -1335,11 +1339,15 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         if (lowest_idx != -1)
         {
 
-            std::cout <<" TIME " <<  ((size_t)ros::Time::now().toSec()) << std::endl;
-
             lowest_idx = ((size_t)ros::Time::now().toSec()) % collision_free.size();
 
+            std::cout <<" TIME " <<  ((size_t)ros::Time::now().toSec()) << std::endl;
+
+            std::cout <<" GRASP INDEX " <<  grasp_indices[lowest_idx] << std::endl;
+
             tf::Transform rel = grasp.grasps[grasp_indices[lowest_idx]].approach[0];
+
+            std::cout <<" GRASP PUSH " <<  rel.getOrigin().x() << " " <<  rel.getOrigin().y() << " " <<  rel.getOrigin().z() << " " << std::endl;
 
             double factor = collision_free_pushfactor[lowest_idx];
             tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(collision_free[lowest_idx]);
@@ -1349,21 +1357,20 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
             get_ik(arm, in_ik_frame, result);
             get_ik(arm, in_ik_frame_push, result_push);
 
-            tf::Stamped<tf::Pose> actPose, approach, push;
-            actPose.setData(in_ik_frame * wristy);
-            actPose.frame_id_ = ik_frame_;
-            approach = getPoseIn("torso_lift_link",actPose);
-
-            actPose.setData(in_ik_frame * wristy * rel);
-            actPose.frame_id_ = ik_frame_;
-            push = getPoseIn("torso_lift_link",actPose);
-
-            std::cout << push.getOrigin().z() << std::endl;
             RobotArm::getInstance(arm)->move_arm_joint(result);
             ros::Duration(1).sleep();
             ros::Duration(1).sleep();
             RobotArm::getInstance(arm)->move_arm_joint(result_push);
             RobotArm::getInstance(arm)->move_arm_joint(result);
+
+            //tf::Stamped<tf::Pose> actPose, approach, push;
+            //actPose.setData(in_ik_frame * wristy);
+            //actPose.frame_id_ = ik_frame_;
+            //approach = getPoseIn("torso_lift_link",actPose);
+
+            //actPose.setData(in_ik_frame * wristy * rel);
+            //actPose.frame_id_ = ik_frame_;
+            //push = getPoseIn("torso_lift_link",actPose);
 
         }
 

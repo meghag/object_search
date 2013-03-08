@@ -17,6 +17,7 @@ public:
     std::vector<tf::Vector3> bb_min;
     std::vector<tf::Vector3> bb_max;
     std::vector<bool> bb_full;
+    tf::Pose push;
     std::vector<tf::Pose> approach;
 };
 

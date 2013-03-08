@@ -168,9 +168,9 @@ void GraspPlanning::checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std:
             //std::cout << std::endl;
             //for (size_t j = 0; j < act.bb_min.size(); j++)
             //{
-              //  //! arbitrary threshold 10 magix number, why ten points min?
-                //if (act.bb_full[j] && (bb_cnt[j] < 10))
-                  //  good = false;
+            //  //! arbitrary threshold 10 magix number, why ten points min?
+            //if (act.bb_full[j] && (bb_cnt[j] < 10))
+            //  good = false;
             //}
 
             if (good)
@@ -250,7 +250,6 @@ void GraspPlanning::checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std:
         if (normals)
         {
             //pubCloud("normals", cloud_normalvis, "tum_os_table");
-            //finish();
         }
 
     }
@@ -365,32 +364,70 @@ std::vector<tf::Pose> GraspPlanning::calcGrasps(const PointCloudPtr object_model
 
 void GraspPlanning::initGrasps()
 {
-    GraspBoxSet act;
+    if (0)
+    {
 
-    act.bb_min.push_back(tf::Vector3(0.23,-0.01,-0.02));
-    act.bb_max.push_back(tf::Vector3(0.26,0.01,0.02));
-    act.bb_full.push_back(true);
+        GraspBoxSet act;
 
-    act.bb_min.push_back(tf::Vector3(0.18,-3.46945e-18,-0.02));
-    act.bb_max.push_back(tf::Vector3(0.23,0.04,0.02));
-    act.bb_full.push_back(false);
+        act.bb_min.push_back(tf::Vector3(0.23,-0.01,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.26,0.01,0.02));
+        act.bb_full.push_back(true);
 
-    act.bb_min.push_back(tf::Vector3(0.18,-0.04,-0.02));
-    act.bb_max.push_back(tf::Vector3(0.23,3.46945e-18,0.02));
-    act.bb_full.push_back(false);
+        act.bb_min.push_back(tf::Vector3(0.18,-3.46945e-18,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.23,0.04,0.02));
+        act.bb_full.push_back(false);
 
-    act.bb_min.push_back(tf::Vector3(-0.02,-0.06,-0.03));
-    act.bb_max.push_back(tf::Vector3(0.18,0.06,0.03));
-    act.bb_full.push_back(false);
+        act.bb_min.push_back(tf::Vector3(0.18,-0.04,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.23,3.46945e-18,0.02));
+        act.bb_full.push_back(false);
 
-    tf::Pose push;
-    push.setOrigin(tf::Vector3(0.1,0,0));
-    push.setRotation(tf::Quaternion(0,0,0,1));
-    act.approach.push_back(push);
+        act.bb_min.push_back(tf::Vector3(-0.02,-0.06,-0.03));
+        act.bb_max.push_back(tf::Vector3(0.18,0.06,0.03));
+        act.bb_full.push_back(false);
 
-    act.name = "push_forward";
+        tf::Pose push;
+        push.setOrigin(tf::Vector3(0.1,0,0));
+        push.setRotation(tf::Quaternion(0,0,0,1));
+        act.approach.push_back(push);
 
-    grasps.push_back(act);
+        act.name = "push_forward";
+
+        grasps.push_back(act);
+    }
+
+    //if (0)
+    {
+
+        GraspBoxSet act;
+
+        act.bb_min.push_back(tf::Vector3(0.17,-0.02,0.02));
+        act.bb_max.push_back(tf::Vector3(0.2,0.02,0.1));
+        act.bb_full.push_back(true);
+
+        act.bb_min.push_back(tf::Vector3(0.17,0,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.2,0.04,0.02));
+        act.bb_full.push_back(false);
+
+        act.bb_min.push_back(tf::Vector3(0.17,-0.04,-0.02));
+        act.bb_max.push_back(tf::Vector3(0.2,0,0.02));
+        act.bb_full.push_back(false);
+
+        act.bb_min.push_back(tf::Vector3(-0.03,-0.06,-0.03));
+        act.bb_max.push_back(tf::Vector3(0.17,0.06,0.03));
+        act.bb_full.push_back(false);
+
+        tf::Pose push;
+        push.setOrigin(tf::Vector3(0,0,0.1));
+        push.setRotation(tf::Quaternion(0,0,0,1));
+        act.approach.push_back(push);
+
+        act.name = "push_side";
+
+        grasps.push_back(act);
+
+    }
+
+
 }
 
 void GraspPlanning::visualizeGrasp(size_t grasp_type, std::string frame_id, int highlight)
