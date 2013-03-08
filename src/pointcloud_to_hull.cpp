@@ -730,6 +730,9 @@ std::vector<tf::StampedTransform> transforms_from_planning_response; // for tf p
 
 int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vector<tf::Pose> &object_posterior_belief, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,tf::Vector3 bb_min, tf::Vector3 bb_max, tf::Stamped<tf::Pose> fixed_to_ik, tf::Stamped<tf::Pose> sensor_in_fixed)
 {
+    GraspPlanning grasp;
+    grasp.initGrasps();
+
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_table (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_box (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_box_projected (new pcl::PointCloud<pcl::PointXYZ>);
@@ -911,7 +914,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         //int arm =  1; // right arm
         std::cout << "Getting grasps for cluster #" << max_idx << std::endl;
         std::vector<tf::Pose> ik_checked,random,low,high,checked,filtered, reachable, collision_free;
-        std::vector<tf::Vector3> normals, centers;
+
 
         //getGrasps(clusters[max_idx], low, high);
 
@@ -946,9 +949,9 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         //check ik first
         //if (1)
         //{
-        GraspPlanning::checkGraspsIK(arm,fixed_to_ik,random,ik_checked);
+        grasp.checkGraspsIK(arm,fixed_to_ik,random,ik_checked);
         ROS_INFO("checked for reachability, %zu reachable grasp candidates", ik_checked.size());
-        GraspPlanning::checkGrasps(clusters[max_idx],ik_checked,filtered);
+        grasp.checkGrasps(clusters[max_idx],ik_checked,filtered);
         //}
         //else
         //{
@@ -958,7 +961,9 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         std::cout << "number of filtered grasps : " << filtered.size() << " out of " << random.size() << std::endl;
         // should not collide with other points either
         //checkGrasps(cloud_in_box,filtered,checked,&normals);
-        GraspPlanning::checkGrasps(cloud_in_box,filtered,reachable,&normals,&centers);
+        std::vector<tf::Vector3> normals, centers;
+        std::vector<int> grasp_indices;
+        grasp.checkGrasps(cloud_in_box,filtered,reachable,&grasp_indices,&normals,&centers);
         //std::cout << "number of checked grasps : " << checked.size() << " out of " << filtered.size() << std::endl;
         ROS_INFO("tock");
         //checkGrasps(cloud_in_box,random,checked);

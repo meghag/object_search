@@ -98,229 +98,142 @@ bool GraspPlanning::inside(tf::Vector3 point, tf::Vector3 bbmin, tf::Vector3 bbm
         return false;
 }
 
-
-void GraspPlanning::checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked, std::vector<tf::Vector3> *normals, std::vector<tf::Vector3> *centers)
+void GraspPlanning::checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked, std::vector<int> *grasp_index, std::vector<tf::Vector3> *normals, std::vector<tf::Vector3> *centers)
 {
-    // min coordinates of aabb
-    //std::vector<tf::Vector3> bb_min;
-    // max coordinates of aabb
-    //std::vector<tf::Vector3> bb_max;
-    // should this bounding box be empty => true or should contain a point => false
-    //std::vector<bool> bb_full;
 
-    /*
-    double xShift = .18; // distance toolframe to wrist, we work in wrist later for ik etc
-
-    // we want to see some points centered between the grippers
-    bb_min.push_back(tf::Vector3(xShift + 0.03,-0.02,-.02));
-    bb_max.push_back(tf::Vector3(xShift + 0.04, 0.02, .02));
-    bb_full.push_back(true);
-
-    // we want to see some points centered between the grippers
-    bb_min.push_back(tf::Vector3(xShift + 0.04,-0.02,-.02));
-    bb_max.push_back(tf::Vector3(xShift + 0.05, 0.02, .02));
-    bb_full.push_back(true);
-
-    //coarsest of approximation for gripper fingers when gripper is open
-    bb_min.push_back(tf::Vector3(xShift + 0.00,0.03,-.02));
-    bb_max.push_back(tf::Vector3(xShift + 0.05,0.09, .02));
-    bb_full.push_back(false);
-
-    bb_min.push_back(tf::Vector3(xShift + 0.00,-0.09,-.02));
-    bb_max.push_back(tf::Vector3(xShift + 0.05,-0.03, .02));
-    bb_full.push_back(false);
-
-    // we want to be able to approach from far away, so check the space we sweep when approaching and grasping
-    bb_min.push_back(tf::Vector3(xShift - 0.2 ,-0.09,-.03));
-    bb_max.push_back(tf::Vector3(xShift + 0.00, 0.09, .03));
-    bb_full.push_back(false);
-    */
-
-    GraspBoxSet act;
-
-    if(0)
+    for (int gidx = 0; gidx < grasps.size(); gidx++)
     {
-        //push forward open grip
-        act.bb_min.push_back(tf::Vector3(0.23,-0.05,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.24,-0.03,0.02));
-        act.bb_full.push_back(true);
+        GraspBoxSet &act = grasps[gidx];
 
-        act.bb_min.push_back(tf::Vector3(0.23,0.03,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.24,0.05,0.02));
-        act.bb_full.push_back(true);
+        std::vector<size_t> bb_cnt;
+        bb_cnt.resize(act.bb_min.size());
 
-        act.bb_min.push_back(tf::Vector3(0.18,0.03,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.23,0.09,0.02));
-        act.bb_full.push_back(false);
+        std::vector<tf::Vector3> points_inside;
 
-        act.bb_min.push_back(tf::Vector3(0.18,-0.09,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.23,-0.03,0.02));
-        act.bb_full.push_back(false);
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_normalvis(new pcl::PointCloud<pcl::PointXYZRGB>);
 
-        act.bb_min.push_back(tf::Vector3(-0.02,-0.09,-0.03));
-        act.bb_max.push_back(tf::Vector3(0.18,0.09,0.03));
-        act.bb_full.push_back(false);
-    }
-
-
-    if (1)
-    {
-        //push forward closed gripper
-        act.bb_min.push_back(tf::Vector3(0.23,-0.01,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.26,0.01,0.02));
-        act.bb_full.push_back(true);
-
-        act.bb_min.push_back(tf::Vector3(0.23,-0.01,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.26,0.01,0.02));
-        act.bb_full.push_back(true);
-
-        act.bb_min.push_back(tf::Vector3(0.18,-3.46945e-18,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.23,0.04,0.02));
-        act.bb_full.push_back(false);
-
-        act.bb_min.push_back(tf::Vector3(0.18,-0.04,-0.02));
-        act.bb_max.push_back(tf::Vector3(0.23,3.46945e-18,0.02));
-        act.bb_full.push_back(false);
-
-        act.bb_min.push_back(tf::Vector3(-0.02,-0.06,-0.03));
-        act.bb_max.push_back(tf::Vector3(0.18,0.06,0.03));
-        act.bb_full.push_back(false);
-
-
-    }
-
-
-    tf::Pose push;
-    push.setOrigin(tf::Vector3(0.01,0,0));
-    push.setRotation(tf::Quaternion(0,0,0,1));
-    //act.approach.push_back(push);
-
-    //act.name = "push_forward";
-
-    std::vector<size_t> bb_cnt;
-    bb_cnt.resize(act.bb_min.size());
-
-    std::vector<tf::Vector3> points_inside;
-
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_normalvis(new pcl::PointCloud<pcl::PointXYZRGB>);
-
-    // for each grasp
-    for (std::vector<tf::Pose>::iterator it = unchecked.begin(); it!=unchecked.end(); ++it)
-    {
-
-        points_inside.clear();
-        std::fill( bb_cnt.begin(), bb_cnt.end(), 0 );
-
-        bool good = true;
-
-        //for each point, points first so that we transform only once, do not transform full pointcloud as we might get lucky and hit a point early
-        // and thus not need to transform all of them
-        //for (int i = 0; (i < cloud->points.size()) && good; ++i)
-        for (size_t i = 0; (i < cloud->points.size()) && good; ++i)
+        // for each grasp
+        for (std::vector<tf::Pose>::iterator it = unchecked.begin(); it!=unchecked.end(); ++it)
         {
-            tf::Vector3 curr(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z);
-            // project point to gripper coordinates
-            curr = (*it).inverse() * curr;
 
-            // check each defined bounding box
-            //for (int k = 0; (k < bb_min.size()) && good; ++k)
-            for (size_t k = 0; (k < act.bb_min.size()); ++k)
+            points_inside.clear();
+            std::fill( bb_cnt.begin(), bb_cnt.end(), 0 );
+
+            bool good = true;
+
+            //for each point, points first so that we transform only once, do not transform full pointcloud as we might get lucky and hit a point early
+            // and thus not need to transform all of them
+            //for (int i = 0; (i < cloud->points.size()) && good; ++i)
+            for (size_t i = 0; (i < cloud->points.size()) && good; ++i)
             {
-                if (inside(curr, act.bb_min[k], act.bb_max[k]))
+                tf::Vector3 curr(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z);
+                // project point to gripper coordinates
+                curr = (*it).inverse() * curr;
+
+                // check each defined bounding box
+                //for (int k = 0; (k < bb_min.size()) && good; ++k)
+                for (size_t k = 0; (k < act.bb_min.size()); ++k)
                 {
-                    bb_cnt[k]++;
-                    if (!act.bb_full[k])
-                        good = false;
-                    else
-                        points_inside.push_back(tf::Vector3(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z));
+                    if (inside(curr, act.bb_min[k], act.bb_max[k]))
+                    {
+                        bb_cnt[k]++;
+                        if (!act.bb_full[k])
+                            good = false;
+                        else
+                            points_inside.push_back(tf::Vector3(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z));
+                    }
+
+                }
+            }
+
+            //std::cout << std::endl;
+            for (size_t j = 0; j < act.bb_min.size(); j++)
+            {
+                //! arbitrary threshold 10 magix number, why ten points min?
+                if (act.bb_full[j] && (bb_cnt[j] < 10))
+                    good = false;
+            }
+
+            if (good)
+            {
+                std::vector<tf::Vector3> evec;
+                std::vector<double> eval;
+
+                checked.push_back(*it);
+
+                //for (int j = 0; j < bb_min.size(); j++)
+                //std::cout << "bb_cnt" << j << " : " << bb_cnt[j] << std::endl;
+
+                if (normals)
+                {
+                    pos_eigen_xy(points_inside, evec, eval);
+                    //tf::Vector3 normal = evec[0].cross(evec[1]);
+                    tf::Vector3 normal = evec[2];
+
+                    normal = normal.normalized();
+
+                    std::cout << "evec0" << evec[0].x() << " " << evec[0].y() << " " << evec[0].z() << std::endl;
+                    std::cout << "evec1" << evec[1].x() << " " << evec[1].y() << " " << evec[1].z() << std::endl;
+                    std::cout << "evec2" << evec[2].x() << " " << evec[2].y() << " " << evec[2].z() << std::endl;
+                    std::cout << "NORM                                                 " << normal.x() << " " << normal.y() << " " << normal.z() << " pt in " << points_inside.size() << std::endl;
+
+                    //normals->push_back(normal);
+
+                    tf::Vector3 avg(0,0,0);
+                    for (size_t k = 0; k < points_inside.size(); ++k)
+                    {
+                        pcl::PointXYZRGB pt;
+                        pt.x = points_inside[k].x();
+                        pt.y = points_inside[k].y();
+                        pt.z = points_inside[k].z();
+                        pt.r = 250;
+                        pt.g = 50;
+                        pt.b = 50;
+                        cloud_normalvis->points.push_back(pt);
+
+                        avg+= points_inside[k];
+                    }
+
+                    if (points_inside.size() > 0)
+                        avg = (1 /  (double)points_inside.size()) * avg;
+
+                    tf::Vector3 norm = evec[2].normalize();
+
+                    for (int coord = 0 ; coord < 3; coord++)
+                        for (double len = 0; len < 0.05; len+= 0.001)
+                        {
+                            pcl::PointXYZRGB pt;
+                            pt.x = avg.x() + evec[coord].x() * len;
+                            pt.y = avg.y() + evec[coord].y() * len;
+                            pt.z = avg.z() + evec[coord].z() * len;
+                            //pt.x = avg.x() + norm.x() * len;
+                            //pt.y = avg.y() + norm.y() * len;
+                            //pt.z = avg.z() + norm.z() * len;
+                            pt.r = ((coord == 0) ? 255 : 0);
+                            pt.g = ((coord == 1) ? 255 : 0);
+                            pt.b = ((coord == 2) ? 255 : 0);
+                            cloud_normalvis->points.push_back(pt);
+                        }
+
+                    normals->push_back(avg + norm);
+                    if (centers)
+                        centers->push_back(avg);
+                    if (grasp_index)
+                        grasp_index->push_back(gidx);
+
                 }
 
             }
+
+
         }
 
-        //std::cout << std::endl;
-        for (size_t j = 0; j < act.bb_min.size(); j++)
+        if (normals)
         {
-            //! arbitrary threshold 10 magix number, why ten points min?
-            if (act.bb_full[j] && (bb_cnt[j] < 10))
-                good = false;
+            //pubCloud("normals", cloud_normalvis, "tum_os_table");
+            //finish();
         }
 
-        if (good)
-        {
-            std::vector<tf::Vector3> evec;
-            std::vector<double> eval;
-
-            checked.push_back(*it);
-
-            //for (int j = 0; j < bb_min.size(); j++)
-            //std::cout << "bb_cnt" << j << " : " << bb_cnt[j] << std::endl;
-
-            if (normals)
-            {
-                pos_eigen_xy(points_inside, evec, eval);
-                //tf::Vector3 normal = evec[0].cross(evec[1]);
-                tf::Vector3 normal = evec[2];
-
-                normal = normal.normalized();
-
-                std::cout << "evec0" << evec[0].x() << " " << evec[0].y() << " " << evec[0].z() << std::endl;
-                std::cout << "evec1" << evec[1].x() << " " << evec[1].y() << " " << evec[1].z() << std::endl;
-                std::cout << "evec2" << evec[2].x() << " " << evec[2].y() << " " << evec[2].z() << std::endl;
-                std::cout << "NORM                                                 " << normal.x() << " " << normal.y() << " " << normal.z() << " pt in " << points_inside.size() << std::endl;
-
-                //normals->push_back(normal);
-
-                tf::Vector3 avg(0,0,0);
-                for (size_t k = 0; k < points_inside.size(); ++k)
-                {
-                    pcl::PointXYZRGB pt;
-                    pt.x = points_inside[k].x();
-                    pt.y = points_inside[k].y();
-                    pt.z = points_inside[k].z();
-                    pt.r = 250;
-                    pt.g = 50;
-                    pt.b = 50;
-                    cloud_normalvis->points.push_back(pt);
-
-                    avg+= points_inside[k];
-                }
-
-                if (points_inside.size() > 0)
-                    avg = (1 /  (double)points_inside.size()) * avg;
-
-                tf::Vector3 norm = evec[2].normalize();
-
-                for (int coord = 0 ; coord < 3; coord++)
-                for (double len = 0; len < 0.05; len+= 0.001)
-                {
-                    pcl::PointXYZRGB pt;
-                    pt.x = avg.x() + evec[coord].x() * len;
-                    pt.y = avg.y() + evec[coord].y() * len;
-                    pt.z = avg.z() + evec[coord].z() * len;
-                    //pt.x = avg.x() + norm.x() * len;
-                    //pt.y = avg.y() + norm.y() * len;
-                    //pt.z = avg.z() + norm.z() * len;
-                    pt.r = ((coord == 0) ? 255 : 0);
-                    pt.g = ((coord == 1) ? 255 : 0);
-                    pt.b = ((coord == 2) ? 255 : 0);
-                    cloud_normalvis->points.push_back(pt);
-                }
-
-                normals->push_back(avg + norm);
-                if (centers)
-                    centers->push_back(avg);
-
-            }
-
-        }
-
-
-    }
-
-    if (normals) {
-        //pubCloud("normals", cloud_normalvis, "tum_os_table");
-        //finish();
     }
 
     //ros::Duration(.5).sleep();
@@ -435,47 +348,6 @@ void GraspPlanning::initGrasps()
 {
     GraspBoxSet act;
 
-    /*
-       act.bb_min.push_back(tf::Vector3(0.21,-0.02,-0.02));
-       act.bb_max.push_back(tf::Vector3(0.22,0.02,0.02));
-       act.bb_full.push_back(true);
-
-       act.bb_min.push_back(tf::Vector3(0.22,-0.02,-0.02));
-       act.bb_max.push_back(tf::Vector3(0.23,0.02,0.02));
-       act.bb_full.push_back(true);
-
-       act.bb_min.push_back(tf::Vector3(0.18,0.03,-0.02));
-       act.bb_max.push_back(tf::Vector3(0.23,0.09,0.02));
-       act.bb_full.push_back(false);
-
-       act.bb_min.push_back(tf::Vector3(0.18,-0.09,-0.02));
-       act.bb_max.push_back(tf::Vector3(0.23,-0.03,0.02));
-       act.bb_full.push_back(false);
-
-       act.bb_min.push_back(tf::Vector3(-0.02,-0.09,-0.03));
-       act.bb_max.push_back(tf::Vector3(0.18,0.09,0.03));
-      act.bb_full.push_back(false);
-
-    act.bb_min.push_back(tf::Vector3(0.23,-0.05,-0.02));
-    act.bb_max.push_back(tf::Vector3(0.24,-0.03,0.02));
-    act.bb_full.push_back(true);
-
-    act.bb_min.push_back(tf::Vector3(0.23,0.03,-0.02));
-    act.bb_max.push_back(tf::Vector3(0.24,0.05,0.02));
-    act.bb_full.push_back(true);
-
-    act.bb_min.push_back(tf::Vector3(0.18,0.03,-0.02));
-    act.bb_max.push_back(tf::Vector3(0.23,0.09,0.02));
-    act.bb_full.push_back(false);
-
-    act.bb_min.push_back(tf::Vector3(0.18,-0.09,-0.02));
-    act.bb_max.push_back(tf::Vector3(0.23,-0.03,0.02));
-    act.bb_full.push_back(false);
-
-    act.bb_min.push_back(tf::Vector3(-0.02,-0.09,-0.03));
-    act.bb_max.push_back(tf::Vector3(0.18,0.09,0.03));
-    act.bb_full.push_back(false);*/
-
     act.bb_min.push_back(tf::Vector3(0.23,-0.01,-0.02));
     act.bb_max.push_back(tf::Vector3(0.26,0.01,0.02));
     act.bb_full.push_back(true);
@@ -499,39 +371,7 @@ void GraspPlanning::initGrasps()
 
     act.name = "push_forward";
 
-    /*
-
-        double xShift = .18; // distance toolframe to wrist, we work in wrist later for ik etc
-
-        // we want to see some points centered between the grippers
-        act.bb_min.push_back(tf::Vector3(xShift + 0.03,-0.02,-.02));
-        act.bb_max.push_back(tf::Vector3(xShift + 0.04, 0.02, .02));
-        act.bb_full.push_back(true);
-
-        // we want to see some points centered between the grippers
-        act.bb_min.push_back(tf::Vector3(xShift + 0.04,-0.02,-.02));
-        act.bb_max.push_back(tf::Vector3(xShift + 0.05, 0.02, .02));
-        act.bb_full.push_back(true);
-
-        //coarsest of approximation for gripper fingers when gripper is open
-        act.bb_min.push_back(tf::Vector3(xShift + 0.00,0.03,-.02));
-        act.bb_max.push_back(tf::Vector3(xShift + 0.05,0.09, .02));
-        act.bb_full.push_back(false);
-
-        act.bb_min.push_back(tf::Vector3(xShift + 0.00,-0.09,-.02));
-        act.bb_max.push_back(tf::Vector3(xShift + 0.05,-0.03, .02));
-        act.bb_full.push_back(false);
-
-        // we want to be able to approach from far away, so check the space we sweep when approaching and grasping
-        act.bb_min.push_back(tf::Vector3(xShift - 0.2 ,-0.09,-.03));
-        act.bb_max.push_back(tf::Vector3(xShift + 0.00, 0.09, .03));
-        act.bb_full.push_back(false);
-
-        act.name = "grasp_forward";
-        */
-
     grasps.push_back(act);
-
 }
 
 void GraspPlanning::visualizeGrasp(size_t grasp_type, std::string frame_id, int highlight)

@@ -32,12 +32,12 @@ public :
 
     static bool inside(tf::Vector3 point, tf::Vector3 bbmin, tf::Vector3 bbmax);
     //static void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked);
-    static void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked, std::vector<tf::Vector3> *normals = 0L, std::vector<tf::Vector3> *centers = 0L);
+    void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked, std::vector<int> *grasp_index=0L, std::vector<tf::Vector3> *normals = 0L, std::vector<tf::Vector3> *centers = 0L);
 
     static GraspBoxSet graspBoxSetFromMsg(const tum_os::BoxSet &msg);
     static tum_os::BoxSet graspBoxSetToMsg(const GraspBoxSet &boxset);
 
-    static void checkGraspsIK(int arm, tf::Stamped<tf::Pose> fixed_to_ik, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked);
+    void checkGraspsIK(int arm, tf::Stamped<tf::Pose> fixed_to_ik, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked);
 
     static void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
 
