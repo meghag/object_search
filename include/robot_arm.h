@@ -21,6 +21,8 @@ public:
 
     pr2_controllers_msgs::JointTrajectoryGoal createTrajectory(std::vector<double> jointState, double dur);
 
+    static void reset_arms();
+
 private:
 
     RobotArm(int side);

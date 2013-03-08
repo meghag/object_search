@@ -24,6 +24,8 @@
 #include <tum_os/Clusters.h>
 
 #include "../include/robot_arm.h"
+#include "../include/van_der_corput.h"
+#include "../include/grasp_planning.h"
 
 extern "C" {
 #include <gpcl/gpc.h>
@@ -78,35 +80,8 @@ tf::TransformBroadcaster *br = 0;
 
 template <class T>
 void pubCloud(const std::string &topic_name, const T &cloud, std::string frame_id = fixed_frame_);
-
-void reset_arms()
-{
-    std::cout << "Reset arm position" << std::endl;
-    std::vector<double> jstate[2];
-    jstate[0].resize(7);
-    jstate[1].resize(7);
-
-    jstate[0][0] = -1.6168837569724208;
-    jstate[0][1] =  0.15550442262485537;
-    jstate[0][2] =  -1.25;
-    jstate[0][3] =  -2.1222118472906528;
-    jstate[0][4] =  -0.90575412503025221;
-    jstate[0][5] =  -1.3540678462623723;
-    jstate[0][6] =  1.7130631649684915;
-
-    jstate[1][0] = 1.5371426009988673;
-    jstate[1][1] =  0.15318173630933338;
-    jstate[1][2] =  1.25;
-    jstate[1][3] =  -2.1017963799253305;
-    jstate[1][4] =  0.66713731189146697;
-    jstate[1][5] =  -0.7240180626857029;
-    jstate[1][6] =  -10.049029141041331;
-
-    RobotArm::getInstance(0)->move_arm_joint(jstate[0]);
-    RobotArm::getInstance(1)->move_arm_joint(jstate[1]);
-}
-
 //void pubCloud(const std::string &topic_name, const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::string frame_id = fixed_frame_);
+
 
 void minmax3d(tf::Vector3 &min, tf::Vector3 &max, pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
 {
@@ -204,6 +179,7 @@ bool inside(tf::Vector3 point, tf::Vector3 bbmin, tf::Vector3 bbmax)
         return false;
 }
 
+/*
 class BoxSet
 {
 public:
@@ -215,95 +191,6 @@ public:
     std::vector<bool> bb_full;
 };
 
-#include <Eigen/Dense>
-
-using namespace Eigen;
-
-template <typename Derived, typename OtherDerived>
-void calculateSampleCovariance(const MatrixBase<Derived>& x, const MatrixBase<Derived>& y, MatrixBase<OtherDerived> & C_)
-{
-    typedef typename Derived::Scalar Scalar;
-    typedef typename internal::plain_row_type<Derived>::type RowVectorType;
-
-    const Scalar num_observations = static_cast<Scalar>(x.rows());
-
-    const RowVectorType x_mean = x.colwise().sum() / num_observations;
-    const RowVectorType y_mean = y.colwise().sum() / num_observations;
-
-    MatrixBase<OtherDerived>& C = const_cast< MatrixBase<OtherDerived>& >(C_);
-
-    C.derived().resize(x.cols(),x.cols()); // resize the derived object
-    C = (x.rowwise() - x_mean).transpose() * (y.rowwise() - y_mean) / num_observations;
-
-
-}
-
-MatrixXd pos_covar_xy(const std::vector<tf::Vector3> &points)
-{
-    MatrixXd esamples(points.size(),3);
-    for (size_t n=0; n < points.size(); ++n)
-    {
-        VectorXd evec;
-        evec.resize(3);
-        evec(0) = points[n].x();
-        evec(1) = points[n].y();
-        evec(2) = points[n].z();
-        esamples.row(n) = evec;
-    }
-    MatrixXd ret;
-    calculateSampleCovariance(esamples,esamples,ret);
-    return ret;
-}
-
-void swap_if_less(tf::Vector3 &vec_a, double &val_a, tf::Vector3 &vec_b, double &val_b)
-{
-    if (val_a < val_b)
-    {
-        double tmp = val_a;
-        tf::Vector3 tmp_vec = vec_a;
-        vec_a = vec_b;
-        val_a = val_b;
-        vec_b = tmp_vec;
-        val_b = tmp;
-    }
-}
-
-void pos_eigen_xy(const std::vector<tf::Vector3> &points, std::vector<tf::Vector3> &evec, std::vector<double> &eval)
-{
-    Matrix<double,3,3> covarMat = pos_covar_xy(points);
-    Eigen::SelfAdjointEigenSolver<Eigen::Matrix<double,3,3> >
-    eigenSolver(covarMat);
-    //cout << "vec" << endl << eigenSolver.eigenvectors() << endl;
-    //cout << "val" << endl << eigenSolver.eigenvalues() << endl;
-    //MatrixXf::Index maxIndex;
-    //eigenSolver.eigenvalues().maxCoeff(&maxIndex);
-    //MatrixXd max = eigenSolver.eigenvectors().col(maxIndex);
-
-    for (size_t c = 0; c < 3; c++)
-    {
-        evec.push_back(tf::Vector3(eigenSolver.eigenvectors().col(c)(0),eigenSolver.eigenvectors().col(c)(1),eigenSolver.eigenvectors().col(c)(2)));
-        eval.push_back(eigenSolver.eigenvalues()(c));
-    }
-
-    //bubble sort eigenvectors after eigen values
-    swap_if_less(evec[0], eval[0], evec[1], eval[1]);
-    swap_if_less(evec[1], eval[1], evec[2], eval[2]);
-    swap_if_less(evec[0], eval[0], evec[1], eval[1]);
-
-    for (size_t c = 0; c < 3; c++)
-    {
-        std::cout << evec[c].x() << " "<< evec[c].y() << " "<< evec[c].z() << "  VAL " << eval[c] << std::endl;
-        //std::cout << eigenSolver.eigenvectors().col(c)(0) << " "
-        //          << eigenSolver.eigenvectors().col(c)(1) << " "
-        //        << eigenSolver.eigenvectors().col(c)(2) << " "
-        //      << " Eigenvalue " << eigenSolver.eigenvalues()(c) << std::endl;
-    }
-
-    //cout << "max " << endl << max << endl;
-
-    //tf::Vector3 maxVec(max(0),max(1),max(2));
-    //evec.push_back(maxVec);
-}
 
 void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pose> &unchecked, std::vector<tf::Pose> &checked, std::vector<tf::Vector3> *normals = 0L, std::vector<tf::Vector3> *centers= 0L)
 {
@@ -313,34 +200,6 @@ void checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<tf::Pos
     //std::vector<tf::Vector3> bb_max;
     // should this bounding box be empty => true or should contain a point => false
     //std::vector<bool> bb_full;
-
-    /*
-    double xShift = .18; // distance toolframe to wrist, we work in wrist later for ik etc
-
-    // we want to see some points centered between the grippers
-    bb_min.push_back(tf::Vector3(xShift + 0.03,-0.02,-.02));
-    bb_max.push_back(tf::Vector3(xShift + 0.04, 0.02, .02));
-    bb_full.push_back(true);
-
-    // we want to see some points centered between the grippers
-    bb_min.push_back(tf::Vector3(xShift + 0.04,-0.02,-.02));
-    bb_max.push_back(tf::Vector3(xShift + 0.05, 0.02, .02));
-    bb_full.push_back(true);
-
-    //coarsest of approximation for gripper fingers when gripper is open
-    bb_min.push_back(tf::Vector3(xShift + 0.00,0.03,-.02));
-    bb_max.push_back(tf::Vector3(xShift + 0.05,0.09, .02));
-    bb_full.push_back(false);
-
-    bb_min.push_back(tf::Vector3(xShift + 0.00,-0.09,-.02));
-    bb_max.push_back(tf::Vector3(xShift + 0.05,-0.03, .02));
-    bb_full.push_back(false);
-
-    // we want to be able to approach from far away, so check the space we sweep when approaching and grasping
-    bb_min.push_back(tf::Vector3(xShift - 0.2 ,-0.09,-.03));
-    bb_max.push_back(tf::Vector3(xShift + 0.00, 0.09, .03));
-    bb_full.push_back(false);
-    */
 
     BoxSet act;
 
@@ -547,6 +406,7 @@ void checkGraspsIK(int arm, tf::Stamped<tf::Pose> fixed_to_ik, std::vector<tf::P
     }
 
 }
+*/
 
 
 
@@ -1034,53 +894,6 @@ void test_hull_calc()
 
 }
 
-
-#include <cmath>
-#include <iostream>
-
-//van der corput sequence
-double vdc(int n, double base = 2)
-{
-    double vdc = 0, denom = 1;
-    while (n)
-    {
-        vdc += fmod(n, base) / (denom *= base);
-        n /= base; // note: conversion from 'double' to 'int'
-    }
-    return vdc;
-}
-
-int bases[] = {2,3,5,7,11,13,17,19,23,29};
-
-//get the nth element of a dense sequence of poses filling 0..1 in x, y, z and the SO(3) for rotation
-// based on van der corput sequence with relatively prime bases
-tf::Pose vdc_pose(int n)
-{
-    tf::Pose ret;
-    ret.setOrigin(tf::Vector3(vdc(n,bases[0]),vdc(n,bases[1]),vdc(n,bases[2])));
-    double u[3];
-    for (int i= 0; i<3; i++)
-        u[i] = vdc(n,bases[i+3]);
-    double q[4];
-    q[0] = sqrt(1 - u[0]) * sin(2 * M_PI * u[1]);
-    q[1] = sqrt(1 - u[0]) * cos(2 * M_PI * u[1]);
-    q[2] = sqrt(u[0]) * sin(2 * M_PI * u[2]);
-    q[3] = sqrt(u[0]) * cos(2 * M_PI * u[2]);
-    ret.setRotation(tf::Quaternion(q[0],q[1],q[2],q[3]));
-    return ret;
-}
-
-tf::Pose vdc_pose_bound(tf::Vector3 min, tf::Vector3 max, int n)
-{
-    tf::Pose ret = vdc_pose(n);
-    ret.getOrigin() = tf::Vector3( min.x() + (ret.getOrigin().x() * (max.x() - min.x())),
-                                   min.y() + (ret.getOrigin().y() * (max.y() - min.y())),
-                                   min.z() + (ret.getOrigin().z() * (max.z() - min.z())));
-    return ret;
-}
-
-//octomap
-
 #include <TableTopObject.h>
 
 //#include <octomap_ros/OctomapROS.h>
@@ -1360,7 +1173,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         //! num grasps
         for (int k =0; k < 100000; k++)
         {
-            random.push_back(vdc_pose_bound(cluster_min,cluster_max,k));
+            random.push_back(VanDerCorput::vdc_pose_bound(cluster_min,cluster_max,k));
         }
 
         ROS_INFO("tick");
@@ -1369,9 +1182,9 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         //check ik first
         //if (1)
         //{
-        checkGraspsIK(arm,fixed_to_ik,random,ik_checked);
+        GraspPlanning::checkGraspsIK(arm,fixed_to_ik,random,ik_checked);
         ROS_INFO("checked for reachability, %zu reachable grasp candidates", ik_checked.size());
-        checkGrasps(clusters[max_idx],ik_checked,filtered);
+        GraspPlanning::checkGrasps(clusters[max_idx],ik_checked,filtered);
         //}
         //else
         //{
@@ -1381,7 +1194,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         std::cout << "number of filtered grasps : " << filtered.size() << " out of " << random.size() << std::endl;
         // should not collide with other points either
         //checkGrasps(cloud_in_box,filtered,checked,&normals);
-        checkGrasps(cloud_in_box,filtered,reachable,&normals,&centers);
+        GraspPlanning::checkGrasps(cloud_in_box,filtered,reachable,&normals,&centers);
         //std::cout << "number of checked grasps : " << checked.size() << " out of " << filtered.size() << std::endl;
         ROS_INFO("tock");
         //checkGrasps(cloud_in_box,random,checked);
@@ -1656,7 +1469,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
 
                     //std::cout << amt << " inco " <<  (inCo ? "true " : "false ") << amt_free << std::endl;
                     int cnt = 0;
-                    for (double amt = 0; amt <= 10; amt += amt_step)
+                    for (double amt = 0; amt <= 4; amt += amt_step)
                     {
                         // visualize normals
                         cnt++;
@@ -1842,7 +1655,6 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
 
 }
 
-
 void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose> fixed_to_ik, tf::Stamped<tf::Pose> sensor_in_fixed)
 {
 
@@ -1852,7 +1664,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
     pcl::PointCloud<pcl::PointXYZ>::Ptr object_cloud (new pcl::PointCloud<pcl::PointXYZ>);
     for (int i=0; i < 100; i++)
     {
-        tf::Pose act = vdc_pose(n++);
+        tf::Pose act = VanDerCorput::vdc_pose(n++);
         act.setOrigin(tf::Vector3(0,0,0));
         tf::Pose rel;
         rel.setOrigin(tf::Vector3(.0125,0,0));
@@ -1915,7 +1727,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
     std::vector<tf::Pose> aposteriori_belief;
     for (int k =0; k < 10000; k++)
     {
-        apriori_belief.push_back(vdc_pose_bound(bb_min,bb_max,k));
+        apriori_belief.push_back(VanDerCorput::vdc_pose_bound(bb_min,bb_max,k));
     }
     ROS_INFO("samples created");
 
@@ -1936,15 +1748,13 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
 
         ROS_ERROR("PRE %zu POST %zu", apriori_belief.size(), aposteriori_belief.size());
 
-
-
         if (aposteriori_belief.size() == 0)
             finish();
 
         apriori_belief = aposteriori_belief;
         aposteriori_belief.clear();
 
-        reset_arms();
+        RobotArm::reset_arms();
 
     }
 
@@ -1978,7 +1788,7 @@ void  test_vdc()
 
         for (int i=0; i < 1000; i++)
         {
-            tf::Pose act = vdc_pose(n++);
+            tf::Pose act = VanDerCorput::vdc_pose(n++);
             geometry_msgs::Pose pose_msg;
             tf::poseTFToMsg(act, pose_msg);
             //std::cout << pose_msg << std::endl;
@@ -2110,7 +1920,7 @@ int main(int argc,char **argv)
 
     if ((argc>1) && (atoi(argv[1])==0))
     {
-        reset_arms();
+        RobotArm::reset_arms();
         exit(0);
     }
 
