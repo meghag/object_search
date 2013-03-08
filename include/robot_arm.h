@@ -34,7 +34,7 @@ public:
 
     int home_arm();
 
-    void open_gripper(double amount = 0.09);
+    void open_gripper(double amount = 0.09, double effort = -1);
 
 private:
 

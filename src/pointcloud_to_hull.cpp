@@ -1315,7 +1315,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                         min_remaining = num_remaining_inv;
 
                         collision_free.push_back(*it);
-                        collision_free_pushfactor.push_back(end_free);
+                        collision_free_pushfactor.push_back(end_free - amt_free);
                     }
 
                     //ros::Duration(0.2).sleep();
@@ -1339,28 +1339,31 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         if (lowest_idx != -1)
         {
 
-            lowest_idx = ((size_t)ros::Time::now().toSec()) % collision_free.size();
+            int index = ((size_t)ros::Time::now().toSec()) % collision_free.size();
 
             std::cout <<" TIME " <<  ((size_t)ros::Time::now().toSec()) << std::endl;
 
-            std::cout <<" GRASP INDEX " <<  grasp_indices[lowest_idx] << std::endl;
+            std::cout <<" GRASP INDEX " <<  grasp_indices[index] << std::endl;
 
-            tf::Transform rel = grasp.grasps[grasp_indices[lowest_idx]].approach[0];
+            tf::Transform rel = grasp.grasps[grasp_indices[index]].approach[0];
 
             std::cout <<" GRASP PUSH " <<  rel.getOrigin().x() << " " <<  rel.getOrigin().y() << " " <<  rel.getOrigin().z() << " " << std::endl;
 
-            double factor = collision_free_pushfactor[lowest_idx];
-            tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(collision_free[lowest_idx]);
+            double factor = collision_free_pushfactor[index];
+            tf::Pose in_ik_frame = fixed_to_ik.inverseTimes(collision_free[index]);
             tf::Pose in_ik_frame_push = in_ik_frame * rel;
 
             in_ik_frame_push.getOrigin() = in_ik_frame.getOrigin() + factor * (in_ik_frame_push.getOrigin() - in_ik_frame.getOrigin());
 
-            get_ik(arm, in_ik_frame, result);
-            get_ik(arm, in_ik_frame_push, result_push);
+            int err = get_ik(arm, in_ik_frame, result);
+            int err2 = get_ik(arm, in_ik_frame_push, result_push);
+
+            ROS_ERROR("ERROR CODES %i %i", err, err2);
 
             /*RobotArm::getInstance(arm)->move_arm_joint(result);
             RobotArm::getInstance(arm)->move_arm_joint(result_push);
             RobotArm::getInstance(arm)->move_arm_joint(result);*/
+            RobotArm::getInstance(arm)->open_gripper(0.001, 5);
 
             int failure = RobotArm::getInstance(arm)->move_arm(in_ik_frame);
             if (failure == 0)

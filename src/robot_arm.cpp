@@ -243,12 +243,12 @@ int RobotArm::home_arm()
 }
 
 
-void RobotArm::open_gripper(double amount)
+void RobotArm::open_gripper(double amount, double effort)
 {
     pr2_controllers_msgs::Pr2GripperCommandGoal open;
     //open.command.position = 0.085 * amount;
     open.command.position = amount;
-    open.command.max_effort = -1.0;  // Do not limit effort (negative)
+    open.command.max_effort = effort;
 
     gripper_client_->sendGoal(open);
     //gripper_client_->waitForResult();
