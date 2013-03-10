@@ -1363,16 +1363,17 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
             /*RobotArm::getInstance(arm)->move_arm_joint(result);
             RobotArm::getInstance(arm)->move_arm_joint(result_push);
             RobotArm::getInstance(arm)->move_arm_joint(result);*/
-            RobotArm::getInstance(arm)->open_gripper(0.001, 5);
+            RobotArm::getInstance(arm)->open_gripper(0.01);
 
             int failure = RobotArm::getInstance(arm)->move_arm(in_ik_frame);
             if (failure == 0)
             {
 
                 ROS_ERROR("MOVED THE ARM");
-                RobotArm::getInstance(arm)->move_arm_joint(result_push);
-                RobotArm::getInstance(arm)->move_arm_joint(result);
+                RobotArm::getInstance(arm)->move_arm_joint(result_push,5);
                 RobotArm::getInstance(arm)->open_gripper(0.02);
+                RobotArm::getInstance(arm)->move_arm_joint(result,2);
+                RobotArm::getInstance(arm)->open_gripper(0.01);
                 RobotArm::getInstance(arm)->home_arm();
                 RobotArm::getInstance(arm)->open_gripper(0.001);
             }

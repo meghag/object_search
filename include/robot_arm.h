@@ -22,7 +22,7 @@ public:
     int move_arm_via_ik(tf::Pose goalPose);
 
     // direct joint control
-    int move_arm_joint(std::vector<double> jointState);
+    int move_arm_joint(std::vector<double> jointState, double time_to_target = 1);
 
     void startTrajectory(pr2_controllers_msgs::JointTrajectoryGoal goal,bool waitForFinish = true);
 

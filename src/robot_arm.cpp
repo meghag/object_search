@@ -58,10 +58,10 @@ RobotArm::move_arm_via_ik(tf::Pose goalPose)
 }
 
 int
-RobotArm::move_arm_joint(std::vector<double> jointState)
+RobotArm::move_arm_joint(std::vector<double> jointState, double time_to_target)
 {
     // 1 second, rather fast
-    startTrajectory(createTrajectory(jointState,1), true);
+    startTrajectory(createTrajectory(jointState,time_to_target), true);
     return 0;
 }
 
