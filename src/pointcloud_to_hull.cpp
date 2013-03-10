@@ -1207,7 +1207,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                     // how far do we push until we touch the object ?
 
 
-                    double amt_step = .01;
+                    double amt_step = .02;
                     double amt_free = 0;
                     for (double amt = 0; amt <= 1.001; amt += amt_step)
                     {
@@ -1224,7 +1224,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
 
                     //std::cout << amt << " inco " <<  (inCo ? "true " : "false ") << amt_free << std::endl;
                     int cnt = 0;
-                    for (double amt = 0; amt <= 4; amt += amt_step)
+                    for (double amt = 0; amt <= 4; amt += amt_step * 2)
                     {
                         // visualize normals
                         cnt++;
@@ -1608,7 +1608,6 @@ int main(int argc,char **argv)
         RobotArm::reset_arms();
         exit(0);
     }
-
 
     ros::Rate rt(1);
 
