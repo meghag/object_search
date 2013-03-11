@@ -145,10 +145,12 @@ void RobotArm::reset_arms()
     jstate[0].resize(7);
     jstate[1].resize(7);
 
-    jstate[0][0] = -1.6168837569724208;
+    //jstate[0][0] = -1.6168837569724208;
+    jstate[0][0] = -1.53;
     jstate[0][1] =  0.15550442262485537;
     jstate[0][2] =  -1.25;
-    jstate[0][3] =  -2.1222118472906528;
+    //jstate[0][3] =  -2.1222118472906528;
+    jstate[0][3] =  -2.05;
     jstate[0][4] =  -0.90575412503025221;
     jstate[0][5] =  -1.3540678462623723;
     jstate[0][6] =  1.7130631649684915;
@@ -156,10 +158,14 @@ void RobotArm::reset_arms()
     jstate[1][0] = 1.5371426009988673;
     jstate[1][1] =  0.15318173630933338;
     jstate[1][2] =  1.25;
-    jstate[1][3] =  -2.1017963799253305;
-    jstate[1][4] =  0.66713731189146697;
-    jstate[1][5] =  -0.7240180626857029;
-    jstate[1][6] =  -10.049029141041331;
+    //jstate[1][3] =  -2.1017963799253305;
+    jstate[1][3] =  -2.05;
+    //jstate[1][4] =  0.66713731189146697;
+    jstate[1][4] =  0.905;
+    //jstate[1][5] =  -0.7240180626857029;
+    jstate[1][5] =  -1.35;
+    //jstate[1][6] =  -10.049029141041331;
+    jstate[1][6] =  1.71;
 
     RobotArm::getInstance(0)->move_arm_joint(jstate[0]);
     RobotArm::getInstance(1)->move_arm_joint(jstate[1]);
@@ -178,7 +184,7 @@ int RobotArm::move_arm(tf::Pose goalPose)
     goalA.motion_plan_request.num_planning_attempts = 300;
     goalA.motion_plan_request.planner_id = std::string("");
     goalA.planner_service_name = std::string("ompl_planning/plan_kinematic_path");
-    goalA.motion_plan_request.allowed_planning_time = ros::Duration(15.0);
+    goalA.motion_plan_request.allowed_planning_time = ros::Duration(25.0);
 
     arm_navigation_msgs::SimplePoseConstraint desired_pose;
     desired_pose.header.frame_id = "torso_lift_link";
@@ -205,7 +211,7 @@ int RobotArm::move_arm(tf::Pose goalPose)
 
     ros::Duration(.01).sleep();
 
-    finished_within_time = move_arm_client_->waitForResult(ros::Duration(16.0));
+    finished_within_time = move_arm_client_->waitForResult(ros::Duration(90.0));
     if (!finished_within_time) {
         move_arm_client_->cancelGoal();
         ROS_INFO("DUPLO: Timed out achieving goal A");
@@ -231,14 +237,15 @@ int RobotArm::home_arm()
 
     if (side_ == 0)
     {
-        goal.setOrigin(tf::Vector3(0.244, -0.542, 0.049));
-        goal.setRotation(tf::Quaternion(-0.426, 0.091, 0.645, 0.627));
+        goal.setOrigin(tf::Vector3(0.285, -0.540, 0.050));
+        goal.setRotation(tf::Quaternion(-0.417, 0.083, 0.655, 0.625));
     }
     else
     {
-      goal.setOrigin(tf::Vector3(0.374, 0.527, 0.259));
-      goal.setRotation(tf::Quaternion(-0.536, 0.384, -0.348, 0.666));
+      goal.setOrigin(tf::Vector3(0.285, 0.540, 0.050));
+      goal.setRotation(tf::Quaternion(-0.564, 0.657, -0.008, 0.501));
     }
+
     return move_arm(goal);
 }
 
