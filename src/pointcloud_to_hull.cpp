@@ -743,7 +743,10 @@ struct Push
 
 bool compare_push(Push i,Push j)
 {
-    return (i.num_removed > j.num_removed);
+    if (i.num_removed == j.num_removed)
+        return (i.object_motion.length() > j.object_motion.length());
+    else
+        return (i.num_removed > j.num_removed);
 }
 
 
@@ -812,8 +815,8 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
     tf::Stamped<tf::Pose> odom_to_torso = getPose("odom_combined", ik_frame_);
 
-    //! num grasps
-    for (int k =0; k < 100000; k++)
+    //! num grasps per cluster and arm
+    for (int k =0; k < 25000; k++)
     {
         random.push_back(VanDerCorput::vdc_pose_bound(cluster_min,cluster_max,k));
     }
@@ -952,7 +955,7 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
         collision_free.clear();
 
-        size_t min_remaining = object_posterior_belief.size() + 1;
+        //size_t min_remaining = object_posterior_belief.size() + 1;
 
         //for (std::vector<tf::Pose>::iterator it = reachable.begin(); (it!=reachable.end()) && ros::ok(); ++it)
         for (size_t sit = 0 ; sit < reachable.size() ; sit++)
@@ -1123,7 +1126,7 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
                 //}
 
-                min_remaining = num_remaining_inv;
+                //min_remaining = num_remaining_inv;
                 Push current_push;
                 current_push.arm = arm;
                 current_push.cluster_index = max_idx;
