@@ -64,3 +64,5 @@ target_link_libraries(manipulator ${PROJECT_NAME} gpcl)
 
 rosbuild_add_executable(grasp_designer src/grasp_designer.cpp src/kinematics.cpp src/grasp_planning.cpp src/van_der_corput.cpp)
 #target_link_libraries(grasp_designer octomap octomath)
+
+rosbuild_add_executable(move_model src/move_model.cpp)

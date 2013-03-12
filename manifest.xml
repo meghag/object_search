@@ -33,6 +33,7 @@
   <depend package="pr2_arm_navigation_perception"/>
   <depend package="pr2_common_action_msgs"/>
   <depend package="pr2_msgs"/>
+  <depend package="gazebo_msgs"/>
   <export>
     <cpp cflags="-I${prefix}/include/" lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lgpc"/>
   </export>
