@@ -730,16 +730,6 @@ void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses)
 boost::mutex transforms_from_planning_response_mutex;
 std::vector<tf::StampedTransform> transforms_from_planning_response; // for tf publishing
 
-struct Push
-{
-    int arm;
-    size_t cluster_index;
-    size_t grasp_index;
-    tf::Pose from;
-    tf::Pose to;
-    tf::Vector3 object_motion;
-    double num_removed;
-};
 
 bool compare_push(Push i,Push j)
 {
@@ -818,8 +808,18 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
     //! num grasps per cluster and arm
     for (int k =0; k < 25000; k++)
     {
-        random.push_back(VanDerCorput::vdc_pose_bound(cluster_min,cluster_max,k));
+        tf::Pose act = VanDerCorput::vdc_pose_bound(cluster_min,cluster_max,k);
+        //act.setRotation(tf::Quaternion((k % 1 == 0) ? 0.65 : -.65,0,0,.65));
+        //act.setRotation(tf::Quaternion( 0.0445028, 0.57906,0.089325, 0.809154));
+        //act.getRotation() = act.getRotation().normalize();
+        act.setRotation(tf::createQuaternionFromRPY(M_PI / 2.0f,0, k / 100.0f));
+        //act.setRotation(tf::Quaternion( 0,0,0,1));
+        random.push_back(act);
     }
+
+    //pub_belief("checked_grasps",random);
+
+    //finish();
 
     ROS_INFO("tick");
     // should have points of cluster we want to grasp inside
@@ -1038,7 +1038,7 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
                 }
 
                 //std::cout << amt << " inco " <<  (inCo ? "true " : "false ") << amt_free << std::endl;
-                /*int cnt = 0;
+                int cnt = 0;
                 for (double amt = 0; amt <= 4; amt += amt_step * 2)
                 {
                     // visualize normals
@@ -1072,7 +1072,7 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
                             cloud_normalvis->points.push_back(pt);
                         }
 
-                }*/
+                }
 
                 //std::cout <<  "AMT FRE" << amt_free << std::endl;
 
@@ -1347,7 +1347,6 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
 
     std::vector<Push> pushes;
 
-// top top
     for (int arm_i = 0; arm_i < 2; arm_i ++)
         for (int k = 0; k < obj_only.size(); k++)
             generate_valid_pushes(object_posterior_belief,

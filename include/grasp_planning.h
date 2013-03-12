@@ -10,6 +10,18 @@
 #include <tf/tf.h>
 #include <tum_os/BoxSet.h>
 
+struct Push
+{
+    int arm;
+    size_t cluster_index;
+    size_t grasp_index;
+    tf::Pose from;
+    tf::Pose to;
+    tf::Vector3 object_motion;
+    double num_removed;
+};
+
+
 class GraspBoxSet
 {
 public:
@@ -19,6 +31,10 @@ public:
     std::vector<bool> bb_full;
     tf::Pose push;
     std::vector<tf::Pose> approach;
+    // amount gripper has to be opened before moving from approach to contact
+    double gripper_pre_open;
+    // amount gripper has to be opeend after moving to contact area
+    double gripper_close;
 };
 
 class GraspPlanning
