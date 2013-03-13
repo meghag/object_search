@@ -15,8 +15,11 @@ class CollisionTesting
 {
 public :
 
-    explicit CollisionTesting(ros::NodeHandle &nh) :
-        nh_(nh) { kinematic_state = 0L; }
+    explicit CollisionTesting(ros::NodeHandle &nh)
+        {
+            nh_ = &nh;
+            kinematic_state = 0L;
+        }
 
     void init(bool fromBag = false, std::string filename = "", std::string fixed_frame_ = "");
 
@@ -50,8 +53,6 @@ public :
 
     planning_environment::CollisionModels *collision_models;
 
-    ros::NodeHandle &nh_;
-
     std::string arm_str[2], long_arm_str[2];
 
     std::vector<std::string> arm_names[2];
@@ -64,7 +65,9 @@ public :
 
     static bool publisher_initialized;
 
-    tf::Transformer transformer_;
+    static ros::NodeHandle *nh_;
+
+    //tf::Transformer transformer_;
 
     std::vector<std::string> fixed_frame_names;
     std::vector<tf::StampedTransform> fixed_frame_transforms;

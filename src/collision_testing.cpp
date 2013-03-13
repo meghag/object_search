@@ -7,6 +7,8 @@ ros::Publisher CollisionTesting::vis_marker_array_publisher_;
 
 bool CollisionTesting::publisher_initialized = false;
 
+ros::NodeHandle *CollisionTesting::nh_ = 0L;
+
 void CollisionTesting::init(bool fromBag, std::string filename, std::string fixed_frame)
 {
     //arm_navigation_msgs::GetPlanningScene::Response *planning_scene_res = 0;
@@ -61,7 +63,7 @@ void CollisionTesting::init(bool fromBag, std::string filename, std::string fixe
                 world_joint.child_frame_id_ = ps.robot_state.multi_dof_joint_state.child_frame_ids[0];
                 world_joint.frame_id_ = ps.robot_state.multi_dof_joint_state.frame_ids[0];
                 world_joint.stamp_ = ros::Time(0);
-                transformer_.setTransform(world_joint,"self");
+                //transformer_.setTransform(world_joint,"self");
 
                 geometry_msgs::TransformStamped ts;
                 tf::transformStampedTFToMsg(world_joint, ts);
@@ -78,7 +80,7 @@ void CollisionTesting::init(bool fromBag, std::string filename, std::string fixe
                     tf::transformStampedMsgToTF(ps.fixed_frame_transforms[i], act);
                     act.setData(act.inverse());
                     act.stamp_ = ros::Time(0);
-                    transformer_.setTransform(act,"self");
+                    //transformer_.setTransform(act,"self");
 
                     fixed_frame_transforms.push_back(act);
 
@@ -156,7 +158,7 @@ void CollisionTesting::init(bool fromBag, std::string filename, std::string fixe
     else
     {
         ros::ServiceClient get_planning_scene_client =
-        nh_.serviceClient<arm_navigation_msgs::GetPlanningScene>(GET_PLANNING_SCENE_NAME);
+        nh_->serviceClient<arm_navigation_msgs::GetPlanningScene>(GET_PLANNING_SCENE_NAME);
 
 
         ROS_INFO("Waiting for planning scene service to come up..");
@@ -192,7 +194,7 @@ void CollisionTesting::init(bool fromBag, std::string filename, std::string fixe
 
     if (!publisher_initialized)
     {
-        vis_marker_array_publisher_ = nh_.advertise<visualization_msgs::MarkerArray>("good_state_validity_markers_array", 128, true);
+        vis_marker_array_publisher_ = nh_->advertise<visualization_msgs::MarkerArray>("good_state_validity_markers_array", 128, true);
         publisher_initialized = true;
     }
 }

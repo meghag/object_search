@@ -691,7 +691,7 @@ void insert_pointcloud(OcTreeROS *octoMap,tf::Point sensor_origin, pcl::PointClo
 
 std::map<std::string, ros::Publisher*> belief_publishers;
 
-void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses)
+void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses, std::string frame_id = fixed_frame_)
 {
 
     ros::Publisher *pose_ary_pub;
@@ -713,7 +713,7 @@ void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses)
     }
 
     geometry_msgs::PoseArray ps_ary;
-    ps_ary.header.frame_id = fixed_frame_;
+    ps_ary.header.frame_id = frame_id;
 
     for (std::vector<tf::Pose>::const_iterator it = poses.begin(); it!=poses.end(); it++)
     {
@@ -750,6 +750,7 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
                            TableTopObject &obj,
                            TableTopObject &full_environment,
                            CollisionTesting &ct_full_env,
+                           std::vector<CollisionTesting> &ct_obj_excluding,
                            TableTopObject &table,
                            std::vector<TableTopObject*> obj_only,
                            std::vector<Push> *pushes = 0L)
@@ -771,18 +772,6 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
     //!check for the best object to remove, if we have one
 
-    // init collision testing here so that we have robot model up to date
-    CollisionTesting collision_testing(*nh_);
-    collision_testing.init(data_from_bag, "planning_scene_res.bag",fixed_frame_);
-
-    transforms_from_planning_response_mutex.lock();
-    transforms_from_planning_response.clear();
-
-    for (size_t j = 0; j < collision_testing.fixed_frame_transforms.size(); j++)
-        transforms_from_planning_response.push_back(collision_testing.fixed_frame_transforms[j]);
-
-    transforms_from_planning_response_mutex.unlock();
-
     //int arm =  1; // right arm
     std::cout << "Getting grasps for cluster #" << max_idx << std::endl;
     std::vector<tf::Pose> ik_checked,random,low,high,checked,filtered, reachable, collision_free;
@@ -791,8 +780,12 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
     /*minmax3d(cluster_min, cluster_max, clusters[max_idx]);*/
     minmax3d(cluster_min, cluster_max, obj_only[max_idx]->cloud);
-    cluster_min -= tf::Vector3(.2,.2,.2);
-    cluster_max += tf::Vector3(.2,.2,.2);
+    //cluster_min -= tf::Vector3(.2,.2,.2);
+    //cluster_max += tf::Vector3(.2,.2,.2);
+
+    //!dirty setup dependent code TODO ERROR! only works in current sim environment
+    cluster_min -= tf::Vector3(.2,.0,0);
+    cluster_max += tf::Vector3(.2,.0,0);
 
     //! Dangerous, we're using tf now for a test live
     fixed_to_ik = getPose(fixed_frame_, ik_frame_);
@@ -806,18 +799,21 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
     tf::Stamped<tf::Pose> odom_to_torso = getPose("odom_combined", ik_frame_);
 
     //! num grasps per cluster and arm
-    for (int k =0; k < 25000; k++)
+    for (int k =0; k < 2500; k++)
     {
         tf::Pose act = VanDerCorput::vdc_pose_bound(cluster_min,cluster_max,k);
         //act.setRotation(tf::Quaternion((k % 1 == 0) ? 0.65 : -.65,0,0,.65));
         //act.setRotation(tf::Quaternion( 0.0445028, 0.57906,0.089325, 0.809154));
         //act.getRotation() = act.getRotation().normalize();
+        //std::cout << "Z " << act.getOrigin().z() << std::endl;
+        //!dirty setup dependent code TODO ERROR! only works in current sim environment
+        //act.getOrigin().setZ(.1);
         act.setRotation(tf::createQuaternionFromRPY(M_PI / 2.0f,0, k / 100.0f));
         //act.setRotation(tf::Quaternion( 0,0,0,1));
         random.push_back(act);
     }
 
-    //pub_belief("checked_grasps",random);
+    pub_belief("checked_grasps",random,fixed_frame_);
 
     //finish();
 
@@ -838,12 +834,11 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
     ROS_INFO("AFTER CHECKING GRASPS");
 
-    std::cout << "number of reachable grasps : " << reachable.size() << " out of " << checked.size() << std::endl;
+    std::cout << "number of reachable grasps : " << reachable.size() << " out of " << ik_checked.size() << std::endl;
 
     pub_belief("checked_grasps",checked);
 
     pub_belief("reachable_grasps",reachable);
-    collision_testing.setCollisionFrame("odom_combined");
 
     /*
     {
@@ -887,36 +882,6 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
     }*/
 
 
-    //add the pointclouds of the clusters we don't want to touch to the obstacles for collision checking
-    //if (0)
-
-    //! use obj_excl for this!
-    for (size_t i = 0; i < obj_only.size(); i ++)
-    {
-        if ((int)i != max_idx)
-        {
-            collision_testing.addPointCloud(obj_only[i]->cloud, planning_precision ,&tum_os_table_to_odom_combined);
-            std::cout << " adding cluster " <<  i << "to obstacles" << std::endl;
-        }
-    }
-
-
-    collision_testing.addPointCloud(table.cloud,planning_precision ,&tum_os_table_to_odom_combined);
-
-    //pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_torso (new pcl::PointCloud<pcl::PointXYZ>);
-
-    ros::Rate rt(1);
-    //tf::Stamped<tf::Pose> fixed_to_ik_variable = fixed_to_ik;
-
-
-    //collision_testing.addPointCloud(cloud,0.01);
-    collision_testing.updateCollisionModel();
-
-
-
-    //ROS_INFO("REACHABLE %zu", reachable.size());
-
-
     tf::Transform wristy;
     wristy.setOrigin(tf::Vector3(0.18,0,0));
     wristy.setRotation(tf::Quaternion(0,0,0,1));
@@ -931,21 +896,7 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
     int lowest_idx = -1;
     double lowest_z = 1000;
-
-    //tf::Transform rel;
-    //rel.setOrigin(tf::Vector3(0.1,0,0));
-    //rel.setRotation(tf::Quaternion(0,0,0,1));
-
-
     //! checking cycle
-
-    //tf::Transform root = collision_testing.kinematic_state->getRootTransform();
-
-    collision_testing.kinematic_state->updateKinematicLinks();
-    collision_testing.publish_markers = true;
-
-    //finish();
-
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_normalvis(new pcl::PointCloud<pcl::PointXYZRGB>);
 
@@ -970,8 +921,7 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
             tf::Pose in_ik_frame_push = in_ik_frame * rel;
 
-
-            if ((!ct_full_env.inCollision(arm, in_ik_frame)) && (!collision_testing.inCollision(arm,in_ik_frame_push)))
+            if ((!ct_full_env.inCollision(arm, in_ik_frame)) && (!ct_obj_excluding[max_idx].inCollision(arm,in_ik_frame_push)))
             {
 
                 tf::Stamped<tf::Pose> actPose, approach, push;
@@ -1085,7 +1035,7 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
                     tf::Pose check_pose = in_ik_frame;
                     check_pose.getOrigin() = in_ik_frame.getOrigin() + end * (in_ik_frame_push.getOrigin() - in_ik_frame.getOrigin());
 
-                    bool inCo = collision_testing.inCollision(arm,check_pose);
+                    bool inCo = ct_obj_excluding[max_idx].inCollision(arm,check_pose);
 
                     //std::cout << amt << " inco " <<  (inCo ? "true " : "false ") << amt_free << std::endl;
 
@@ -1260,8 +1210,8 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                 act->addPointCloud(sensor_in_fixed.getOrigin(), bb_min.z(), clusters[j]);
             }
         }
-
         obj_excluding.push_back(act);
+
         size_t num_remaining = 0;
         for (std::vector<tf::Pose>::iterator it = object_posterior_belief.begin(); it!=object_posterior_belief.end(); it++)
         {
@@ -1345,6 +1295,20 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
     ct_full_env.kinematic_state->updateKinematicLinks();
     ct_full_env.publish_markers = true;
 
+    std::vector<CollisionTesting> ct_obj_excluding;
+    for (int k = 0; k < obj_excluding.size(); k++)
+    {
+        CollisionTesting act(*nh_);
+        act.init(data_from_bag, "planning_scene_res.bag",fixed_frame_);
+        act.setCollisionFrame("odom_combined");
+        act.addPointCloud( obj_excluding[k]->cloud, planning_precision , &tum_os_table_to_odom_combined);
+        act.addPointCloud(table,planning_precision ,&tum_os_table_to_odom_combined);
+        act.updateCollisionModel();
+        act.kinematic_state->updateKinematicLinks();
+        act.publish_markers = true;
+        ct_obj_excluding.push_back(act);
+    }
+
     std::vector<Push> pushes;
 
     for (int arm_i = 0; arm_i < 2; arm_i ++)
@@ -1357,6 +1321,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                                   obj,
                                   full_environment,
                                   ct_full_env,
+                                  ct_obj_excluding,
                                   table_object,
                                   obj_only,
                                   &pushes);
