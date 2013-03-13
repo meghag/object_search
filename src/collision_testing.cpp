@@ -9,6 +9,11 @@ bool CollisionTesting::publisher_initialized = false;
 
 ros::NodeHandle *CollisionTesting::nh_ = 0L;
 
+bool CollisionTesting::static_planning_scene_initialized = false;
+
+arm_navigation_msgs::PlanningScene CollisionTesting::static_planning_scene;
+
+
 void CollisionTesting::init(bool fromBag, std::string filename, std::string fixed_frame)
 {
     //arm_navigation_msgs::GetPlanningScene::Response *planning_scene_res = 0;
@@ -99,7 +104,7 @@ void CollisionTesting::init(bool fromBag, std::string filename, std::string fixe
                 tf::transformStampedTFToMsg(current, ts);
                 std::cout << "world joint after transformer " << ts << std::endl;
 
-    //tf::poseTFToMsg(ts, ps.robot_state.multi_dof_joint_state.poses[0]);
+                    //tf::poseTFToMsg(ts, ps.robot_state.multi_dof_joint_state.poses[0]);
 
 
                 //ps.robot_state.multi_dof_joint_state.child_frame_ids[0] = ts.child_frame_id;
@@ -154,29 +159,39 @@ void CollisionTesting::init(bool fromBag, std::string filename, std::string fixe
                   //  std::cout << "fixed frame " << planning_scene_res.planning_scene.fixed_frame_transforms[i] << std::endl;*/
             }
         }
+
+        resetPointCloud();
     }
     else
     {
-        ros::ServiceClient get_planning_scene_client =
-        nh_->serviceClient<arm_navigation_msgs::GetPlanningScene>(GET_PLANNING_SCENE_NAME);
+        // query planning scene only once, we set up most things ourselfs anyway and don't care for an updated pointcloud
+        //! once the robot moves, the initialized should be set to false though!
+        if (!static_planning_scene_initialized)
+        {
+            ros::ServiceClient get_planning_scene_client =
+                nh_->serviceClient<arm_navigation_msgs::GetPlanningScene>(GET_PLANNING_SCENE_NAME);
 
+            ROS_INFO("Waiting for planning scene service to come up..");
+            ros::service::waitForService(GET_PLANNING_SCENE_NAME);
+            ROS_INFO("                                        is up.");
 
-        ROS_INFO("Waiting for planning scene service to come up..");
-        ros::service::waitForService(GET_PLANNING_SCENE_NAME);
-        ROS_INFO("                                        is up.");
+            arm_navigation_msgs::GetPlanningScene::Request planning_scene_req;
+            arm_navigation_msgs::GetPlanningScene::Response planning_scene_res;
 
-        arm_navigation_msgs::GetPlanningScene::Request planning_scene_req;
-        arm_navigation_msgs::GetPlanningScene::Response planning_scene_res;
+            if (!get_planning_scene_client.call(planning_scene_req, planning_scene_res))
+                ROS_ERROR("Could not get planning scene");
+            else
+                planning_scene = planning_scene_res.planning_scene;
 
-        if (!get_planning_scene_client.call(planning_scene_req, planning_scene_res))
-            ROS_ERROR("Could not get planning scene");
-        else
-            planning_scene = planning_scene_res.planning_scene;
+            resetPointCloud();
+
+            static_planning_scene = planning_scene;
+        }
+
+        planning_scene = static_planning_scene;
     }
 
     //planning_scene_res.planning_scene.collision_map.header.frame_id = "/torso_lift_link";
-
-    resetPointCloud();
 
     collision_models = new planning_environment::CollisionModels("robot_description");
 
@@ -332,9 +347,9 @@ bool CollisionTesting::inCollision(int arm, double jointState[])
         color.b = 0;
 
         //collision_models->getAllCollisionPointMarkers(*kinematic_state,
-          //      sum_arr,
-            //    color,
-              //  ros::Duration(1));
+        //      sum_arr,
+        //    color,
+        //  ros::Duration(1));
 
         //ROS_INFO("Publishin collision markers %zu", sum_arr.markers.size());
 

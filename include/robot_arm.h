@@ -28,7 +28,7 @@ public:
 
     pr2_controllers_msgs::JointTrajectoryGoal createTrajectory(std::vector<double> jointState, double dur);
 
-    static void reset_arms();
+    static void reset_arms(int arm = -1);
 
     int move_arm(tf::Pose goalPose);
 

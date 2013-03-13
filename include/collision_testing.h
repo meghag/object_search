@@ -67,6 +67,10 @@ public :
 
     static ros::NodeHandle *nh_;
 
+    static bool static_planning_scene_initialized;
+
+    static arm_navigation_msgs::PlanningScene static_planning_scene;
+
     //tf::Transformer transformer_;
 
     std::vector<std::string> fixed_frame_names;
