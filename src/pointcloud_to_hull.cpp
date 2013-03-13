@@ -1,3 +1,7 @@
+#include <algorithm>
+#include <set>
+#include <iterator>
+
 #include <sensor_msgs/PointCloud2.h>
 #include <geometry_msgs/Transform.h>
 #include <geometry_msgs/PoseArray.h>
@@ -58,10 +62,15 @@ void start()
     std::cout << "system " << i << std::endl;
 }
 
-void finish()
+void pause_simulator()
 {
     int i = system("rosservice call gazebo/pause_physics");
     std::cout << "system " << i << std::endl;
+}
+
+void finish()
+{
+    pause_simulator();
     exit(0);
 }
 
@@ -454,24 +463,24 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
             // how far can we push the object before collision
             double end_free = 1;
-            /*
+
             double end_step = .1;
-            //for (double end = 1; end <= 2.001; end += end_step)
-                {
+            for (double end = 1; end <= 2.001; end += end_step)
+            {
 
-                    tf::Pose check_pose = in_ik_frame;
-                    check_pose.getOrigin() = in_ik_frame.getOrigin() + end * (in_ik_frame_push.getOrigin() - in_ik_frame.getOrigin());
+                tf::Pose check_pose = in_ik_frame;
+                check_pose.getOrigin() = in_ik_frame.getOrigin() + end * (in_ik_frame_push.getOrigin() - in_ik_frame.getOrigin());
 
-                    bool inCo = test_obj_excluding && ct_obj_excluding[max_idx].inCollision(arm,check_pose);
-                    inCo |= ct_table.inCollision(arm,check_pose);
+                bool inCo = test_obj_excluding && ct_obj_excluding[max_idx].inCollision(arm,check_pose);
+                inCo |= ct_table.inCollision(arm,check_pose);
 
-                    //std::cout << amt << " inco " <<  (inCo ? "true " : "false ") << amt_free << std::endl;
+                //std::cout << amt << " inco " <<  (inCo ? "true " : "false ") << amt_free << std::endl;
 
-                    if (inCo)
-                        end = 100;
-                    else
-                        end_free = end;
-                }*/
+                if (inCo)
+                    end = 100;
+                else
+                    end_free = end;
+            }
 
             //std::cout <<  "END FREE" << end_free << std::endl;
             //std::cout <<  "              gives us " << end_free - amt_free << std::endl;
@@ -506,9 +515,10 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
             current_push.grasp_index = grasp_indices[sit];
             current_push.num_removed = max_remaining - num_remaining_inv;
             current_push.object_motion = push_transform.getOrigin();
-            if (current_push.num_removed > 0)
-                pushes->push_back(current_push);
 
+            //if (current_push.num_removed > 0)
+            if (current_push.num_removed > 0.6 * max_remaining)
+                pushes->push_back(current_push);
 
         }
 
@@ -522,6 +532,24 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
     //take a random grasp for debugging
     std::sort (pushes->begin(), pushes->end(), compare_push);
+}
+
+
+struct plan
+{
+    std::vector<int> remove_order;
+    std::set<int> removed_objects;
+    std::vector<double> percentage;
+};
+
+
+//! check if all objects that were blocking this one were already removed in this abstract plan
+bool still_blocked(int j,std::vector<int> remove_order, std::set<int> blocked)
+{
+    std::set<int> result;
+    std::set_difference(blocked.begin(), blocked.end(), remove_order.begin(), remove_order.end(), std::inserter(result,result.begin()));
+
+    return (result.size() > 0);
 }
 
 int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vector<tf::Pose> &object_posterior_belief, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,tf::Vector3 bb_min, tf::Vector3 bb_max, tf::Stamped<tf::Pose> fixed_to_ik, tf::Stamped<tf::Pose> sensor_in_fixed)
@@ -729,24 +757,190 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         ct_obj_excluding.push_back(act);
     }
 
+
+
+    std::vector<CollisionTesting> ct_obj_only;
+    for (size_t k = 0; k < obj_only.size(); k++)
+    {
+        CollisionTesting act(*nh_);
+        act.init(data_from_bag, "planning_scene_res.bag",fixed_frame_);
+        act.setCollisionFrame("odom_combined");
+        act.addPointCloud( obj_only[k]->cloud, planning_precision , &tum_os_table_to_odom_combined);
+        //act.addPointCloud(table,planning_precision ,&tum_os_table_to_odom_combined);
+        act.updateCollisionModel();
+        act.kinematic_state->updateKinematicLinks();
+        act.publish_markers = true;
+        ct_obj_only.push_back(act);
+    }
+
     std::vector<Push> pushes;
 
-    for (int arm_i = 0; arm_i < 2; arm_i ++)
-        for (size_t k = 0; k < obj_only.size(); k++)
-            generate_valid_pushes(object_posterior_belief,
-                                  k,
-                                  arm_i ,
-                                  fixed_to_ik,
-                                  tum_os_table_to_odom_combined,
-                                  obj,
-                                  full_environment,
-                                  true,
-                                  ct_full_env,
-                                  true,
-                                  ct_obj_excluding,
-                                  ct_table,
-                                  obj_only,
-                                  &pushes);
+    bool greedy = false;
+
+    greedy = true;
+
+    if (greedy )
+    {
+        for (int arm_i = 0; arm_i < 2; arm_i ++)
+            for (size_t k = 0; k < obj_only.size(); k++)
+                generate_valid_pushes(object_posterior_belief,
+                                      k,
+                                      arm_i ,
+                                      fixed_to_ik,
+                                      tum_os_table_to_odom_combined,
+                                      obj,
+                                      full_environment,
+                                      true,
+                                      ct_full_env,
+                                      true,
+                                      ct_obj_excluding,
+                                      ct_table,
+                                      obj_only,
+                                      &pushes);
+    }
+    else
+    {
+        // multistep planning
+        for (int arm_i = 0; arm_i < 2; arm_i ++)
+            for (size_t k = 0; k < obj_only.size(); k++)
+                generate_valid_pushes(object_posterior_belief,
+                                      k,
+                                      arm_i ,
+                                      fixed_to_ik,
+                                      tum_os_table_to_odom_combined,
+                                      obj,
+                                      full_environment,
+                                      false,
+                                      ct_full_env,
+                                      false,
+                                      ct_obj_excluding,
+                                      ct_table,
+                                      obj_only,
+                                      &pushes);
+
+        pause_simulator();
+
+        std::vector<std::set<int> > not_blocked;
+
+        std::vector<std::set<int> > blocked;
+
+        std::set<int> full_set;
+
+        ROS_INFO("PRE BLOCKING");
+
+        not_blocked.resize(ct_obj_only.size());
+
+        for (size_t j = 0; j < ct_obj_only.size(); j++)
+        {
+            not_blocked[j].insert(j);
+            full_set.insert(j);
+        }
+
+        //check for each grasp if it is blocked by another object
+        for (size_t k = 0; k < pushes.size(); ++k)
+        {
+            for (size_t j = 0; j < ct_obj_only.size(); j++)
+            {
+                if (j != pushes[k].cluster_index)
+                {
+                    //if (pushes[k].blocked_by.find(j)==pushes[k].blocked_by.end())
+
+                    if ((ct_obj_only[j].inCollision(pushes[k].arm, pushes[k].from)) ||
+                            (ct_obj_only[j].inCollision(pushes[k].arm, pushes[k].to)))
+                    {
+                        //std::cout << j << "blocks " << pushes[k].cluster_index << std::endl;
+                        pushes[k].blocked_by.insert(j);
+                    }
+                    else
+                    {
+                        not_blocked[pushes[k].cluster_index].insert(j);
+                    }
+                }
+            }
+        }
+
+        ROS_INFO("POST BLOCKING");
+
+        blocked.resize(not_blocked.size());
+
+        for (size_t k = 0; k < not_blocked.size(); ++k)
+        {
+            //std::set<int>::iterator kt =std::set<int> result;
+//std::set_difference(s1.begin(), s1.end(), s2.begin(), s2.end(),
+            //  std::inserter(result, result.end()));
+            std::set_difference(full_set.begin(), full_set.end(), not_blocked[k].begin(), not_blocked[k].end(), std::inserter(blocked[k],blocked[k].begin()));
+            //blocked[k].resize(kt-blocked[k].begin());
+            std::cout << "Cluster " << k << " is not blocked by ";
+            for (std::set<int>::iterator it = not_blocked[k].begin(); it != not_blocked[k].end(); ++it)
+                std::cout << *it << " ";
+            std::cout << "\t but blocked by ";
+            for (std::set<int>::iterator it = blocked[k].begin(); it != blocked[k].end(); ++it)
+                std::cout << *it << " ";
+            std::cout << std::endl;
+        }
+
+        // plan ahead
+        int horizon = 3;
+        std::vector<std::vector<plan> > graph;
+        graph.resize(horizon + 1);
+
+        // start with any object that is not blocked in first step
+        for (size_t j = 0; j < ct_obj_only.size(); j++)
+        {
+            plan act;
+            bool can_be_removed = !still_blocked(j,act.remove_order,blocked[j]);
+            act.remove_order.push_back(j);
+            act.removed_objects.insert(j);
+            if (can_be_removed)
+                graph[0].push_back(act);
+        }
+
+        for (int h = 1; h < horizon; h++)
+        {
+            for (std::vector<plan>::iterator it=graph[h-1].begin() ; it!=graph[h-1].end(); ++it)
+            {
+                plan &act = *it;
+                //! debig
+                std::cout << "Plan ";
+                for (std::vector<int>::iterator jt= it->remove_order.begin(); jt!=it->remove_order.end(); ++jt)
+                {
+                    std::cout << *jt << " ";
+                }
+                std::cout << std::endl;
+                //! debag
+
+                for (size_t j = 0; j < ct_obj_only.size(); j++)
+                {
+                    // if current object is not yet in the plan
+                    if (act.removed_objects.find(j) == act.removed_objects.end())
+                    {
+                        // if object is not blocked
+                        if (!still_blocked(j,act.remove_order,blocked[j]))
+                        {
+                            plan new_plan = act;
+                            new_plan.remove_order.push_back(j);
+                            new_plan.removed_objects.insert(j);
+                            graph[h].push_back(new_plan);
+                        }
+
+                    }
+                }
+            }
+        }
+
+        std::cout << "After planning:" << std::endl;
+        for (std::vector<plan>::iterator it=graph[horizon-1].begin() ; it!=graph[horizon-1].end(); ++it)
+        {
+            std::cout << "Plan ";
+            for (std::vector<int>::iterator jt= it->remove_order.begin(); jt!=it->remove_order.end(); ++jt)
+            {
+                std::cout << *jt << " ";
+            }
+            std::cout << std::endl;
+        }
+
+
+    }
 
     ROS_INFO("PUSHES SIZE %zu", pushes.size());
 
@@ -754,7 +948,10 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
     {
         Push &a = pushes[p];
         std::cout << "Push " << p << " removes " << a.num_removed << " arm " << a.arm << " clus " << a.cluster_index << " vec " << a.object_motion.x() << " "
-                  << a.object_motion.y() << " " << a.object_motion.z() << " " << "len" << a.object_motion.length() << std::endl;
+                  << a.object_motion.y() << " " << a.object_motion.z() << " " << "len" << a.object_motion.length();// << std::endl;
+        for (std::set<int>::iterator it = pushes[p].blocked_by.begin() ; it != pushes[p].blocked_by.end() ; ++it)
+            std::cout << " B " << *it;
+        std::cout << std::endl;
     }
 
     //finish();

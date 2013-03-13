@@ -177,18 +177,18 @@ void TableTopObject::addPointCloud2(const tf::Vector3 sensorOrigin, const double
 
 /*
 void TableTopObject::addPointCloudToCopy(const tf::Vector3 sensorOrigin, const double tableHeight, pcl::PointCloud<PointT>::Ptr cloud_to_add)
-{	
+{
     for (size_t i = 0; i < cloud_to_add->points.size(); i++)
     {
         cloud_copy->points.push_back(cloud_to_add->points[i]);
     }
-	
+
     pcl::PointCloud<PointT>::Ptr cloud_to_add_projected (new pcl::PointCloud<PointT>);
-	
+
     projectToPlanePerspective(sensorOrigin, tableHeight, cloud_to_add, cloud_to_add_projected);
-	
+
     octomap::KeySet occupied_cells;
-	
+
     for (size_t i = 0; i < cloud_to_add->points.size(); ++i)
     {
         octomap::KeyRay ray;
@@ -206,11 +206,11 @@ void TableTopObject::addPointCloudToCopy(const tf::Vector3 sensorOrigin, const d
             occupied_cells.insert(*it);
         }
     }
-	
+
     for (KeySet::iterator it = occupied_cells.begin(); it != occupied_cells.end(); ++it)
     {
         m_octoMap_copy->octree.updateNode(*it, true, false);
-    }	
+    }
 }
 */
 
@@ -223,6 +223,12 @@ bool TableTopObject::checkCollision(tf::Transform ownTransform, tf::Transform ot
 
     //tf::transformTFToMsg(resultingTransform, trans);
     //std::cout << "resulting transform :" << trans << std::endl;
+
+    if (!otherObject.has_octo)
+    {
+        ROS_ERROR("Other object does not have octomap!");
+        otherObject.initOcto();
+    }
 
     for (OcTreeROS::OcTreeType::iterator it = m_octoMap->octree.begin(16),
             end = m_octoMap->octree.end(); it != end; ++it)
@@ -297,6 +303,13 @@ bool TableTopObject::checkCoveredPointcloud(tf::Transform ownTransform, tf::Tran
       //  return false;
 
     initOcto();
+
+    if (!otherObject.has_octo)
+    {
+        ROS_ERROR("Other object does not have octomap!");
+        otherObject.initOcto();
+    }
+
 
     tf::Transform resultingTransform = otherTransform.inverseTimes(ownTransform);
 

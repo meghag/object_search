@@ -19,7 +19,7 @@
     </collision>
   </link>
   <gazebo reference="small_box">
-    <material>Gazebo/Purple</material>
+    <material>Gazebo/Turquoise</material>
     <turnGravityOff>false</turnGravityOff>
     <kp>100000000.0</kp>
     <kd>0.0</kd>

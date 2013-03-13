@@ -106,7 +106,7 @@ void GraspPlanning::checkGrasps(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std:
     //std::vector<tf::Vector3> point_cache;
     //point_cache.resize(cloud->points.size());
 
-    for (int gidx = 0; gidx < grasps.size(); gidx++)
+    for (size_t gidx = 0; gidx < grasps.size(); gidx++)
     {
         GraspBoxSet &act = grasps[gidx];
 

@@ -19,6 +19,7 @@ struct Push
     tf::Pose to;
     tf::Vector3 object_motion;
     double num_removed;
+    std::set<int> blocked_by;
 };
 
 
