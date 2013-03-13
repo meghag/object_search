@@ -1408,8 +1408,20 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                 RobotArm::getInstance(arm)->move_arm_joint(result_push,5);
                 RobotArm::getInstance(arm)->open_gripper(0.02);
                 RobotArm::getInstance(arm)->move_arm_joint(result,2);
-                RobotArm::getInstance(arm)->open_gripper(0.01);
-                RobotArm::getInstance(arm)->home_arm();
+                //try planning out of last position, if it fails, raise the arm to the max and then pull it back
+                if (RobotArm::getInstance(arm)->home_arm() != 0)
+                {
+                    ROS_ERROR("Planning to home failed, trying alternative heuristic approach");
+                    tf::Pose higher = pushes[index].from;
+                    bool ik_good = true;
+                    while (ik_good)
+                    {
+                        higher.getOrigin() += tf::Vector3(-.00,0,0.01);
+                        ik_good = (get_ik(arm, higher, result) == 1);
+                    }
+                    higher.getOrigin() -= tf::Vector3(-.00,0,0.01);
+                    RobotArm::getInstance(arm)->move_arm_via_ik(higher);
+                }
                 RobotArm::getInstance(arm)->open_gripper(0.001);
                 success = true;
             }
