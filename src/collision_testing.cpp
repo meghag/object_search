@@ -186,6 +186,8 @@ void CollisionTesting::init(bool fromBag, std::string filename, std::string fixe
             resetPointCloud();
 
             static_planning_scene = planning_scene;
+
+            static_planning_scene_initialized = true;
         }
 
         planning_scene = static_planning_scene;
@@ -233,7 +235,7 @@ void CollisionTesting::setPointCloud(const T &cloud, double pointSize)
 
 void CollisionTesting::updateCollisionModel()
 {
-    std::cout << "void CollisionTesting::updateCollisionModel()" << std::endl;
+    //std::cout << "void CollisionTesting::updateCollisionModel()" << std::endl;
     if (kinematic_state != 0)
         collision_models->revertPlanningScene(kinematic_state);
 
@@ -241,8 +243,8 @@ void CollisionTesting::updateCollisionModel()
     if (kinematic_state == 0)
         ROS_ERROR("KINEMATIC STATE WAS NOT RETURNED BY SETPLANNINGSCENE");
 
-    std::cout << "Collision frame " <<  planning_scene.collision_map.header.frame_id << std::endl;
-    std::cout << "Collision map size" <<  planning_scene.collision_map.boxes.size() << std::endl;
+    //std::cout << "Collision frame " <<  planning_scene.collision_map.header.frame_id << std::endl;
+    //std::cout << "Collision map size" <<  planning_scene.collision_map.boxes.size() << std::endl;
 }
 
 template <class T>

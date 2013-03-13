@@ -138,7 +138,7 @@ void RobotArm::startTrajectory(pr2_controllers_msgs::JointTrajectoryGoal goal, b
 }
 
 
-void RobotArm::reset_arms()
+void RobotArm::reset_arms(int arm)
 {
     std::cout << "Reset arm position" << std::endl;
     std::vector<double> jstate[2];
@@ -167,8 +167,10 @@ void RobotArm::reset_arms()
     //jstate[1][6] =  -10.049029141041331;
     jstate[1][6] =  1.71;
 
-    RobotArm::getInstance(0)->move_arm_joint(jstate[0]);
-    RobotArm::getInstance(1)->move_arm_joint(jstate[1]);
+    if ((arm == 0) || (arm == -1) )
+        RobotArm::getInstance(0)->move_arm_joint(jstate[0]);
+    if ((arm == 1) || (arm == -1) )
+        RobotArm::getInstance(1)->move_arm_joint(jstate[1]);
 }
 
 

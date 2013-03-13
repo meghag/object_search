@@ -36,6 +36,7 @@ public:
 	//octomap::OcTreeROS *m_octoMap_copy;
     pcl::PointCloud<PointT>::Ptr cloud;
 	//pcl::PointCloud<PointT>::Ptr cloud_copy;
+	tf::Vector3 min_bb, max_bb;
 
     bool has_octo;
 

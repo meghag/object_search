@@ -55,4 +55,4 @@ int main(int argc,char **argv)
         ROS_INFO("FAILURE");
     }
 
-}//remember that ros::init(...) must have been called
+}
