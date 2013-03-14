@@ -71,6 +71,12 @@ public :
 
     static arm_navigation_msgs::PlanningScene static_planning_scene;
 
+    void push_offset(tf::Vector3 offset);
+
+    void pop_offset();
+
+    std::vector<geometry_msgs::Point> offset_stack;
+
     //tf::Transformer transformer_;
 
     std::vector<std::string> fixed_frame_names;

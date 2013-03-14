@@ -322,7 +322,7 @@ bool CollisionTesting::inCollision(int arm, double jointState[])
 
     //ROS_INFO("Publishin collision markers? %s", (publish_markers ? "true" : "false") );
 
-    if (publish_markers)
+    if ((publish_markers) || (offset_stack.size() > 0))
     {
         visualization_msgs::MarkerArray sum_arr;
 
@@ -386,3 +386,35 @@ bool CollisionTesting::inCollision(int arm, tf::Pose pose_in_ik_frame)
 
     return inCollision(arm,result);
 }
+
+
+void CollisionTesting::push_offset(tf::Vector3 offset)
+{
+
+    offset_stack.push_back(planning_scene.robot_state.multi_dof_joint_state.poses[0].position);
+    std::cout << "Previous offset " << planning_scene.robot_state.multi_dof_joint_state.poses[0].position << std::endl;
+
+    tf::Vector3 curr;
+    tf::pointMsgToTF(planning_scene.robot_state.multi_dof_joint_state.poses[0].position , curr);
+    curr+= offset;
+    tf::pointTFToMsg(curr, planning_scene.robot_state.multi_dof_joint_state.poses[0].position);
+
+    updateCollisionModel();
+}
+
+void CollisionTesting::pop_offset()
+{
+
+    if (offset_stack.size() < 1)
+    {
+        ROS_ERROR("OFFSET STACK WAS EMPTY WHEN TRYING TO POP!");
+        return;
+    }
+
+    planning_scene.robot_state.multi_dof_joint_state.poses[0].position = offset_stack.back();
+    offset_stack.pop_back();
+
+    updateCollisionModel();
+}
+
+
