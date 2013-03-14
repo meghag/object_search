@@ -48,6 +48,9 @@ bool data_from_bag = false;
 bool data_to_bag = false;
 std::string data_bag_name = "data.bag";
 
+// do not publish anything in inner planner loops
+bool silent = true;
+
 
 #include <ros/ros.h>
 #include <actionlib/client/simple_action_client.h>
@@ -274,9 +277,11 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
     ROS_INFO ("number of reachable grasps : %zu out of %zu", reachable.size() , ik_checked.size() );
 
-    pub_belief("checked_grasps",checked);
+    if (!silent)
+        pub_belief("checked_grasps",checked);
 
-    pub_belief("reachable_grasps",reachable);
+    if (!silent)
+        pub_belief("reachable_grasps",reachable);
 
     /*
     {
@@ -526,7 +531,8 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
     }
 
-    pubCloud("normals", cloud_normalvis, "torso_lift_link");
+    if (!silent)
+        pubCloud("normals", cloud_normalvis, "torso_lift_link");
 
     //finish();
 
@@ -551,6 +557,8 @@ bool still_blocked(int j,std::vector<int> remove_order, std::set<int> blocked)
 
     return (result.size() > 0);
 }
+
+
 
 int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, std::vector<tf::Pose> &object_posterior_belief, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,tf::Vector3 bb_min, tf::Vector3 bb_max, tf::Stamped<tf::Pose> fixed_to_ik, tf::Stamped<tf::Pose> sensor_in_fixed)
 {
@@ -732,7 +740,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
     //ct_full_env.addPointCloud(table,planning_precision ,&tum_os_table_to_odom_combined);
     ct_full_env.updateCollisionModel();
     ct_full_env.kinematic_state->updateKinematicLinks();
-    ct_full_env.publish_markers = true;
+    ct_full_env.publish_markers = !silent;
 
     //table ct
     CollisionTesting ct_table(*nh_);
@@ -741,7 +749,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
     ct_table.addPointCloud(table,planning_precision ,&tum_os_table_to_odom_combined);
     ct_table.updateCollisionModel();
     ct_table.kinematic_state->updateKinematicLinks();
-    ct_table.publish_markers = true;
+    ct_table.publish_markers = !silent;
 
     std::vector<CollisionTesting> ct_obj_excluding;
     for (size_t k = 0; k < obj_excluding.size(); k++)
@@ -753,7 +761,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         //act.addPointCloud(table,planning_precision ,&tum_os_table_to_odom_combined);
         act.updateCollisionModel();
         act.kinematic_state->updateKinematicLinks();
-        act.publish_markers = true;
+        act.publish_markers = !silent;
         ct_obj_excluding.push_back(act);
     }
 
@@ -769,7 +777,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         //act.addPointCloud(table,planning_precision ,&tum_os_table_to_odom_combined);
         act.updateCollisionModel();
         act.kinematic_state->updateKinematicLinks();
-        act.publish_markers = true;
+        act.publish_markers = !silent;
         ct_obj_only.push_back(act);
     }
 
@@ -777,7 +785,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
 
     bool greedy = false;
 
-    greedy = true;
+    //greedy = true;
 
     if (greedy )
     {
@@ -797,6 +805,79 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                                       ct_table,
                                       obj_only,
                                       &pushes);
+
+    ROS_INFO("PUSHES SIZE %zu", pushes.size());
+
+    for (size_t  p =0 ; p < pushes.size(); p++)
+    {
+        Push &a = pushes[p];
+        std::cout << "Push " << p << " removes " << a.num_removed << " arm " << a.arm << " clus " << a.cluster_index << " vec " << a.object_motion.x() << " "
+                  << a.object_motion.y() << " " << a.object_motion.z() << " " << "len" << a.object_motion.length();// << std::endl;
+        for (std::set<int>::iterator it = pushes[p].blocked_by.begin() ; it != pushes[p].blocked_by.end() ; ++it)
+            std::cout << " B " << *it;
+        std::cout << std::endl;
+    }
+
+    //finish();
+
+    if (pushes.size() > 0)
+    {
+
+        bool success = false;
+
+        for (size_t  index = 0; (!success) && (index < pushes.size()); index++)
+        {
+
+            ROS_INFO("PUSHES INDEX %zu", index);
+
+            Push act_push = pushes[index];
+            int arm = act_push.arm;
+
+            std::vector<double> result;
+            result.resize(7);
+            std::fill( result.begin(), result.end(), 0 );
+
+            std::vector<double> result_push;
+            result_push.resize(7);
+            std::fill( result_push.begin(), result_push.end(), 0 );
+
+            int err = get_ik(arm, pushes[index].from, result);
+            int err2 = get_ik(arm, pushes[index].to , result_push);
+
+            ROS_INFO("ERROR CODES %i %i", err, err2);
+
+            RobotArm::getInstance(arm)->open_gripper(0.01);
+
+            int failure = RobotArm::getInstance(arm)->move_arm(pushes[index].from);
+            if (failure == 0)
+            {
+
+                ROS_ERROR("MOVED THE ARM");
+                RobotArm::getInstance(arm)->move_arm_joint(result_push,5);
+                RobotArm::getInstance(arm)->open_gripper(0.02);
+                RobotArm::getInstance(arm)->move_arm_joint(result,2);
+                //try planning out of last position, if it fails, raise the arm to the max and then pull it back
+                if (RobotArm::getInstance(arm)->home_arm() != 0)
+                {
+                    ROS_ERROR("Planning to home failed, trying alternative heuristic approach");
+                    tf::Pose higher = pushes[index].from;
+                    bool ik_good = true;
+                    while (ik_good)
+                    {
+                        higher.getOrigin() += tf::Vector3(-.00,0,0.01);
+                        ik_good = (get_ik(arm, higher, result) == 1);
+                    }
+                    higher.getOrigin() -= tf::Vector3(-.00,0,0.01);
+                    RobotArm::getInstance(arm)->move_arm_via_ik(higher);
+                }
+                RobotArm::getInstance(arm)->open_gripper(0.001);
+                RobotArm::reset_arms(arm);
+                success = true;
+            }
+        }
+
+    }
+
     }
     else
     {
@@ -845,6 +926,8 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                 {
                     //if (pushes[k].blocked_by.find(j)==pushes[k].blocked_by.end())
 
+                    //ct_obj_only[j].push_offset(tf::Vector3(0,0,0));
+
                     if ((ct_obj_only[j].inCollision(pushes[k].arm, pushes[k].from)) ||
                             (ct_obj_only[j].inCollision(pushes[k].arm, pushes[k].to)))
                     {
@@ -855,6 +938,8 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                     {
                         not_blocked[pushes[k].cluster_index].insert(j);
                     }
+
+                    //ct_obj_only[j].pop_offset();
                 }
             }
         }
@@ -942,77 +1027,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
 
     }
 
-    ROS_INFO("PUSHES SIZE %zu", pushes.size());
 
-    for (size_t  p =0 ; p < pushes.size(); p++)
-    {
-        Push &a = pushes[p];
-        std::cout << "Push " << p << " removes " << a.num_removed << " arm " << a.arm << " clus " << a.cluster_index << " vec " << a.object_motion.x() << " "
-                  << a.object_motion.y() << " " << a.object_motion.z() << " " << "len" << a.object_motion.length();// << std::endl;
-        for (std::set<int>::iterator it = pushes[p].blocked_by.begin() ; it != pushes[p].blocked_by.end() ; ++it)
-            std::cout << " B " << *it;
-        std::cout << std::endl;
-    }
-
-    //finish();
-
-    if (pushes.size() > 0)
-    {
-
-        bool success = false;
-
-        for (size_t  index = 0; (!success) && (index < pushes.size()); index++)
-        {
-
-            ROS_INFO("PUSHES INDEX %zu", index);
-
-            Push act_push = pushes[index];
-            int arm = act_push.arm;
-
-            std::vector<double> result;
-            result.resize(7);
-            std::fill( result.begin(), result.end(), 0 );
-
-            std::vector<double> result_push;
-            result_push.resize(7);
-            std::fill( result_push.begin(), result_push.end(), 0 );
-
-            int err = get_ik(arm, pushes[index].from, result);
-            int err2 = get_ik(arm, pushes[index].to , result_push);
-
-            ROS_INFO("ERROR CODES %i %i", err, err2);
-
-            RobotArm::getInstance(arm)->open_gripper(0.01);
-
-            int failure = RobotArm::getInstance(arm)->move_arm(pushes[index].from);
-            if (failure == 0)
-            {
-
-                ROS_ERROR("MOVED THE ARM");
-                RobotArm::getInstance(arm)->move_arm_joint(result_push,5);
-                RobotArm::getInstance(arm)->open_gripper(0.02);
-                RobotArm::getInstance(arm)->move_arm_joint(result,2);
-                //try planning out of last position, if it fails, raise the arm to the max and then pull it back
-                if (RobotArm::getInstance(arm)->home_arm() != 0)
-                {
-                    ROS_ERROR("Planning to home failed, trying alternative heuristic approach");
-                    tf::Pose higher = pushes[index].from;
-                    bool ik_good = true;
-                    while (ik_good)
-                    {
-                        higher.getOrigin() += tf::Vector3(-.00,0,0.01);
-                        ik_good = (get_ik(arm, higher, result) == 1);
-                    }
-                    higher.getOrigin() -= tf::Vector3(-.00,0,0.01);
-                    RobotArm::getInstance(arm)->move_arm_via_ik(higher);
-                }
-                RobotArm::getInstance(arm)->open_gripper(0.001);
-                RobotArm::reset_arms(arm);
-                success = true;
-            }
-        }
-
-    }
 
     /*if (lowest_idx != -1)
     {
