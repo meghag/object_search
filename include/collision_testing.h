@@ -71,6 +71,7 @@ public :
 
     static arm_navigation_msgs::PlanningScene static_planning_scene;
 
+    // offset in robot base coordinate system, apply negative motion of object to check for
     void push_offset(tf::Vector3 offset);
 
     void pop_offset();
