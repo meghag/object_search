@@ -1167,6 +1167,18 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                 {
                     std::cout << " " << im->primitive[k];
                 }
+
+                std::cout << " num removed:";
+                int sum = 0;
+                for (k = 0; k < im->removed_objects.size(); ++k)
+                {
+                    sum += pushes_by_cluster[im->removed_objects[k]][im->primitive[k]]->num_removed;
+                    std::cout << " " << pushes_by_cluster[im->removed_objects[k]][im->primitive[k]]->num_removed;
+                }
+
+                std::cout << " SUM " << sum;
+
+
                 std::cout << std::endl;
             }
 
