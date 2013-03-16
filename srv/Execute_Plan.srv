@@ -11,6 +11,6 @@ float64 table_height
 #tf/LinearMath/Pose destPose
 
 #Action to be taken
-#int32 action
+bool[] push
 ---
 bool result

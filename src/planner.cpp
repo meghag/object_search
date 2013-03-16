@@ -100,15 +100,19 @@ Planner::Planner (ros::NodeHandle& n, int horizon): n_(n), MAX_HORIZON(horizon)
 	dest_pose_pub_ = n_.advertise<geometry_msgs::PoseStamped>("planner_dest_pose", 1);
 	bbx_client_ = n_.serviceClient<object_manipulation_msgs::FindClusterBoundingBox2>("/find_cluster_bounding_box2");
 	octreePub_ = n_.advertise<visualization_msgs::MarkerArray>("octree",1);
+	visibleObjectsPub_ = n_.advertise<visualization_msgs::MarkerArray>("visible_objects",1);
 
 	new_data_wanted_ = false;
+	numKnownObjects_ = 0;
+	planningIteration = 0;
+	totalPlanningTime = 0.0;
 
 	octree_ = new octomap::OcTree(0.01);
 
 	//generate object we search as a pointcloud
 	pcl::PointCloud<PointT>::Ptr object_cloud (new pcl::PointCloud<PointT>);
 	//TODO: Make the dimensions of target object parameters
-	target_x = 0.05;	 target_y = 0.03;	 target_z = 0.04;
+	target_x = 0.03;	 target_y = 0.03;	 target_z = 0.03;
 	ROS_INFO("Filling the point cloud for my object");
 
 	pcl::PointCloud<pcl::PointXYZ> cloud;
@@ -147,6 +151,7 @@ Planner::Planner (ros::NodeHandle& n, int horizon): n_(n), MAX_HORIZON(horizon)
 	}
 	*/
 	toROSMsg(*object_cloud, targetCloud2_);
+	targetDimensions_ = tf::Vector3(0.03, 0.03, 0.03);
 	ROS_INFO("MG: Publishing my object cloud on topic my_object");
 	pubCloud("my_object", object_cloud, fixed_frame_);
 
@@ -353,7 +358,7 @@ void Planner::display_octree(octomap::OcTree* octree)
 	marker.pose.orientation.x = 0.0;
 	marker.pose.orientation.x = 0.0;
 	marker.pose.orientation.x = 1.0;
-	marker.lifetime = ros::Duration(5.0);
+	marker.lifetime = ros::Duration(100.0);
 	int i = 0;
 	//octomap::point3d min = octree_->getBBXMin, max;
 
@@ -401,21 +406,27 @@ void Planner::display_octree(octomap::OcTree* octree)
 			marker.scale.x = it->second;
 			marker.scale.y = it->second;
 			marker.scale.z = it->second;
-			marker_array.markers[i] = marker;
+			//marker_array.markers[i] = marker;
 			marker.id = i;
+			if (i < 10) {
+				octomap::OcTreeKey key;
+				octree->genKey(it->first, key);
+				octomap::OcTreeNode *node = octree->search(key);
+				ROS_INFO("Occupancy: %f, value = %f", node->getOccupancy(), node->getValue());
+			}
 			i++;
 		}
 	}
 
 	//ROS_INFO("octree bbx min = %f %f %f", octree_->getBBXMin().x(), (octree_->getBBXMin()).y(), (octree_->getBBXMin()).z());
 	//ROS_INFO("octree bbx max = %f %f %f", (octree_->getBBXMax()).x(), (octree_->getBBXMax()).y(), (octree_->getBBXMax()).z());
-
 */
+
 	//Occupied voxels in red
 	marker.color.r = 1.0;
 	marker.color.g = 0.0;
 	marker.color.a = 0.5;
-
+	i = 0;
 	for (std::list<octomap::OcTreeVolume>::iterator it = occupiedVoxels.begin(); it != occupiedVoxels.end(); ++it) {
 		if (octree_->inBBX(it->first)) {
 			marker.pose.position.x = it->first.x();
@@ -535,9 +546,9 @@ void Planner::updateFreeVoxels(octomap::OcTree* octree)
 	//std::list<octomap::OcTreeVolume> freeVoxels;
 	//octree->getFreespace(freeVoxels);
 
-	int n_x_voxels = (octree->getBBXMax().x() - octree->getBBXMin().x())/octree->getResolution();
-	int n_y_voxels = (octree->getBBXMax().y() - octree->getBBXMin().y())/octree->getResolution();
-	int n_z_voxels = (octree->getBBXMax().z() - octree->getBBXMin().z())/octree->getResolution();
+	unsigned int n_x_voxels = (octree->getBBXMax().x() - octree->getBBXMin().x())/octree->getResolution();
+	unsigned int n_y_voxels = (octree->getBBXMax().y() - octree->getBBXMin().y())/octree->getResolution();
+	unsigned int n_z_voxels = (octree->getBBXMax().z() - octree->getBBXMin().z())/octree->getResolution();
 
 	for (size_t i = 0; i < n_x_voxels; i++) {
 		for (size_t j = 0; j < n_y_voxels; j++)
@@ -558,10 +569,52 @@ void Planner::updateFreeVoxels(octomap::OcTree* octree)
 				if (!node || (node && !octree->isNodeOccupied(node))) {
 					//This coordinate is in free space
 					octree->updateNode(key, false);
+					//ROS_INFO("Occupancy of now free node = %f", (octree->updateNode(key, false))->getOccupancy());
 					//freeVoxels.push_back(std::make_pair(center, octree->getResolution()));
 				}
 			}
 	}
+}
+
+void Planner::generateOctree(vector<sensor_msgs::PointCloud2> known_objects, vector<bool> moved,
+		octomap::OcTree* octree)
+{
+	vector<sensor_msgs::PointCloud2> selectiveVec, vec_known_object_cloud2 = known_objects;
+	for (size_t i = 0; i < known_objects.size(); i++) {
+		if (beenMoved_[i] == false)
+			selectiveVec.push_back(known_objects[i]);
+	}
+	sensor_msgs::PointCloud2 selectiveCloud2 = concatClouds(selectiveVec);
+
+	//sensor_msgs::PointCloud2 newObjectCloud2 = concatClouds(current_config);
+	sensor_msgs::PointCloud2 known_object_cloud2 = concatClouds(vec_known_object_cloud2);
+	//pcl::PointCloud<PointT>::Ptr current_config_cloud(new pcl::PointCloud<PointT>);
+	pcl::PointCloud<PointT>::Ptr known_object_cloud(new pcl::PointCloud<PointT>);
+	//fromROSMsg(newObjectCloud2, *current_config_cloud);
+	fromROSMsg(known_object_cloud2, *known_object_cloud);
+	//pubCloud("current_simulated_config", current_config_cloud, fixed_frame_);
+	//pubCloud("current_simulated_config", known_object_cloud, fixed_frame_);
+	//ROS_INFO("Published known objects on current_simulated_config topic");
+
+	octomap::Pointcloud octomapCloud;
+	octomap::pointcloudPCLToOctomap (*known_object_cloud, octomapCloud);
+	octomap::point3d octo_bbmin(BB_MIN.x(), BB_MIN.y(), BB_MIN.z()-0.01), octo_bbmax(BB_MAX.x(), BB_MAX.y(), BB_MAX.z());
+	//octomap::OcTree* octree = new octomap::OcTree(0.01);
+	octree->setBBXMin(octo_bbmin);
+	octree->setBBXMax(octo_bbmax);
+	octree->bbxSet();
+	octree->useBBXLimit(true);
+	//octree->enableChangeDetection(true);
+
+	octree->insertScan(octomapCloud, octomapCameraOrigin_);
+	/*
+	ROS_INFO("Displaying new octree before updating it");
+	breakpoint();
+	display_octree(octree);
+	breakpoint();
+	*/
+	updateHiddenVoxels(tf::Vector3(octomapCameraOrigin_.x(), octomapCameraOrigin_.y(), octomapCameraOrigin_.z()), octree, selectiveCloud2, tableHeight_, true);
+	updateFreeVoxels(octree);
 }
 
 bool Planner::planRequestCallback(tum_os::PlanService::Request &plan_request,
@@ -571,19 +624,26 @@ bool Planner::planRequestCallback(tum_os::PlanService::Request &plan_request,
 
 	objectCloud2_ = plan_request.object_cloud;
 	planarCloud2_ = plan_request.planar_cloud;
-	tableHeight_ = plan_request.table_height;
-	BB_MIN = tf::Vector3(plan_request.bb_min[0], plan_request.bb_min[1], plan_request.bb_min[2]);
-	BB_MAX = tf::Vector3(plan_request.bb_max[0], plan_request.bb_max[1], plan_request.bb_max[2]);
-	ROS_INFO("table height = %f", tableHeight_);
+	if (planningIteration == 0) {
+		tableHeight_ = plan_request.table_height;
+		BB_MIN = tf::Vector3(plan_request.bb_min[0], plan_request.bb_min[1], plan_request.bb_min[2]);
+		BB_MAX = tf::Vector3(plan_request.bb_max[0], plan_request.bb_max[1], plan_request.bb_max[2]);
+		ROS_INFO("table height = %f", tableHeight_);
+	}
 	objectCloudPub_.publish(objectCloud2_);
 	display_bbx();
 
-	cluster(objectCloud2_, 0.02, 50, 10000, clustersDetected_);
+	//breakpoint();
+
+	cluster(objectCloud2_, 0.02, 100, 10000, clustersDetected_);
 	//cluster(objectCloud2_, 0.02, 300, 1000, clustersDetected_);
+	cluster_to_known_idx_map_.clear();
 
 	//Filling bounding boxes of detected clusters
 	pcl::PointCloud<PointT>::Ptr clusterCloud(new pcl::PointCloud<PointT>);
+	visualization_msgs::MarkerArray m_array;
 	for (unsigned int c = 0; c < clustersDetected_.size(); c++) {
+		clustersDetected_[c].header.frame_id = "base_link";
 		fromROSMsg(clustersDetected_[c], *clusterCloud);
 		tf::Vector3 min, max;
 		minmax3d(min, max, clusterCloud);
@@ -598,22 +658,16 @@ bool Planner::planRequestCallback(tum_os::PlanService::Request &plan_request,
 		//getClusterBoundingBox(target_cloud2, bbx.pose_stamped, bbx.dimensions);
 		bbx.pose_stamped.pose.position = find_centroid(*clusterCloud);
 		bbx.dimensions.x = max.getX() - min.getX();
-		if (bbx.dimensions.x <= 0.02)
-			bbx.dimensions.x += 0.02;			//Adding some depth to objects because the real depth may not be seen.
+		if (bbx.dimensions.x <= 0.03)
+			bbx.dimensions.x += 0.04;			//Adding some depth to objects because the real depth may not be seen.
 		bbx.dimensions.y = max.getY() - min.getY();
 		bbx.dimensions.z = max.getZ() - min.getZ();
 		ROS_INFO("bbx position: %f %f %f, dimensions: %f %f %f", bbx.pose_stamped.pose.position.x, bbx.pose_stamped.pose.position.y, bbx.pose_stamped.pose.position.z,
 				bbx.dimensions.x, bbx.dimensions.y, bbx.dimensions.z);
 
-		//Detecting target object based on size
-		if (fabs(bbx.dimensions.x - target_x) < 0.03 && fabs(bbx.dimensions.y - target_y) < 0.01 && fabs(bbx.dimensions.z - target_z) < 0.01)
-		{
-			//TODO: Also check for color?
-			ROS_INFO("Target object spotted! SUCCESS!");
-			clustersPub_.publish(clustersDetected_[c]);
-			//breakpoint();
-			//ros::shutdown();
-		}
+		visualization_msgs::Marker bbx_marker = set_marker("base_link", "bbx", c, visualization_msgs::Marker::CUBE,
+					bbx.pose_stamped.pose, bbx.dimensions, 0.0f, 0.0f, 1.0f, 1.0);
+		m_array.markers.push_back(bbx_marker);
 
 		//fill the bbx with points and generate a point cloud
 		pcl::PointCloud<PointT>::Ptr object_cloud (new pcl::PointCloud<PointT>);
@@ -636,36 +690,88 @@ bool Planner::planRequestCallback(tum_os::PlanService::Request &plan_request,
 		clustersDetected_[c] = objectCloud2;
 		pubCloud("filled_cluster_bbx", object_cloud, fixed_frame_);
 
+		vector<geometry_msgs::Point> extents = find_extents(*object_cloud);
+		tf::Vector3 centroid(extents[0].x + (extents[1].x - extents[0].x)/2.0f,
+				extents[2].y + (extents[3].y - extents[2].y)/2.0f,
+				extents[4].z + (extents[5].z - extents[4].z)/2.0f);
+		tf::Vector3 dimensions(extents[1].x - extents[0].x, extents[3].y - extents[2].y, extents[5].z - extents[4].z);
+
+		ROS_INFO("Before: known objects map size = %zu, num known objects = %u, cluster to known idx map size = %zu, beenMoved_ map size = %zu",
+					knownObjects_.size(), numKnownObjects_, cluster_to_known_idx_map_.size(), beenMoved_.size());
+
+		bool new_object = true;
+		for (unsigned int j = 0; j < knownObjects_.size(); j++) {
+			ROS_DEBUG("distance between centroids = %f", abs((knownObjects_[j].first - centroid).length()));
+			if (abs((knownObjects_[j].first - centroid).length()) < 0.05) {
+				new_object = false;
+				//cluster_to_known_idx_map_.insert(std::make_pair(c,j));
+				cluster_to_known_idx_map_[c] = j;
+				knownObjects_[j] = std::make_pair(centroid, clustersDetected_[c]);
+				knownObjectDimensions_[j] = dimensions;
+				break;
+			}
+		}
+
+		if (new_object) {
+			knownObjects_.insert(std::make_pair(numKnownObjects_, std::make_pair(centroid, clustersDetected_[c])));
+			knownObjectDimensions_.push_back(dimensions);
+			beenMoved_.insert(std::make_pair(numKnownObjects_, false));
+			cluster_to_known_idx_map_.insert(std::make_pair(c,numKnownObjects_));
+			numKnownObjects_++;
+		}
 		//breakpoint();
 	}
 
+	visibleObjectsPub_.publish(m_array);
+
+	ROS_INFO("After: known objects map size = %zu, num known objects = %u, cluster to known idx map size = %zu, beenMoved_ map size = %zu",
+			knownObjects_.size(), numKnownObjects_, cluster_to_known_idx_map_.size(), beenMoved_.size());
+
+	//breakpoint();
+	ros::Duration(2.0).sleep();
 
 	//vector<sensor_msgs::PointCloud2> vecShelfCloud;
 	//vecShelfCloud.push_back(objectCloud2_);
 	//vecShelfCloud.push_back(planarCloud2_);
-	pcl::PointCloud<PointT>::Ptr shelf_cloud(new pcl::PointCloud<PointT>);
-	//sensor_msgs::PointCloud2 shelfCloud2 = concatClouds(vecShelfCloud);
-	sensor_msgs::PointCloud2 shelfCloud2 = concatClouds(clustersDetected_);
-	fromROSMsg(shelfCloud2, *shelf_cloud);
+
+	vector<sensor_msgs::PointCloud2> selectiveVec, vec_known_object_cloud2;;
+	vec_known_object_cloud2.resize(numKnownObjects_);
+	for (size_t i = 0; i < numKnownObjects_; i++) {
+		vec_known_object_cloud2[i] = knownObjects_[i].second;
+		if (beenMoved_[i] == false)
+			selectiveVec.push_back(knownObjects_[i].second);
+	}
+
+	sensor_msgs::PointCloud2 selectiveCloud2 = concatClouds(selectiveVec);
+	sensor_msgs::PointCloud2 known_object_cloud2 = concatClouds(vec_known_object_cloud2);
+	pcl::PointCloud<PointT>::Ptr known_object_cloud(new pcl::PointCloud<PointT>);
+	fromROSMsg(known_object_cloud2, *known_object_cloud);
+	pubCloud("current_simulated_config", known_object_cloud, fixed_frame_);
+	ROS_INFO("Published known objects on current_simulated_config topic");
 
 	octomap::Pointcloud octomapCloud;
-	octomap::pointcloudPCLToOctomap (*shelf_cloud, octomapCloud);
+	//octomap::pointcloudPCLToOctomap (*current_config_cloud, octomapCloud);
+	octomap::pointcloudPCLToOctomap (*known_object_cloud, octomapCloud);
+
+	//pcl::PointCloud<PointT>::Ptr shelf_cloud(new pcl::PointCloud<PointT>);
+	//sensor_msgs::PointCloud2 shelfCloud2 = concatClouds(vecShelfCloud);
+	//sensor_msgs::PointCloud2 shelfCloud2 = concatClouds(clustersDetected_);
+	//fromROSMsg(shelfCloud2, *shelf_cloud);
+
 	octomap::point3d octo_bbmin(BB_MIN.x(), BB_MIN.y(), BB_MIN.z()-0.01), octo_bbmax(BB_MAX.x(), BB_MAX.y(), BB_MAX.z());
-	//ROS_INFO("before setting octo bbx: octo_bbmin = %f %f %f", octo_bbmin.x(), octo_bbmin.y(), octo_bbmin.z());
-	//ROS_INFO("before setting octo bbx: octo_bbmax = %f %f %f", octo_bbmax.x(), octo_bbmax.y(), octo_bbmax.z());
-	octree_->setBBXMin(octo_bbmin);
-	octree_->setBBXMax(octo_bbmax);
-	octree_->bbxSet();
-	octree_->useBBXLimit(true);
-	octree_->enableChangeDetection(true);
-	ROS_INFO("after setting octo bbx: octo_bbmin = %f %f %f", octree_->getBBXMin().x(), octree_->getBBXMin().y(), octree_->getBBXMin().z());
-	ROS_INFO("after setting octo bbx: octo_bbmax = %f %f %f", octree_->getBBXMax().x(), octree_->getBBXMax().y(), octree_->getBBXMax().z());
 	ROS_INFO("Size of octree = %zu", octree_->size());
 
 	if (octree_->size() == 1) {
+		octree_->setBBXMin(octo_bbmin);
+		octree_->setBBXMax(octo_bbmax);
+		octree_->bbxSet();
+		octree_->useBBXLimit(true);
+		//octree_->enableChangeDetection(true);
+		ROS_INFO("after setting octo bbx: octo_bbmin = %f %f %f", octree_->getBBXMin().x(), octree_->getBBXMin().y(), octree_->getBBXMin().z());
+		ROS_INFO("after setting octo bbx: octo_bbmax = %f %f %f", octree_->getBBXMax().x(), octree_->getBBXMax().y(), octree_->getBBXMax().z());
 		octree_->insertScan(octomapCloud, octomapCameraOrigin_);
 		//updateHiddenVoxels(tf::Vector3(octomapCameraOrigin_.x(), octomapCameraOrigin_.y(), octomapCameraOrigin_.z()), octree_, objectCloud2_, tableHeight_, true);
-		updateHiddenVoxels(tf::Vector3(octomapCameraOrigin_.x(), octomapCameraOrigin_.y(), octomapCameraOrigin_.z()), octree_, shelfCloud2, tableHeight_, true);
+		updateHiddenVoxels(tf::Vector3(octomapCameraOrigin_.x(), octomapCameraOrigin_.y(), octomapCameraOrigin_.z()), octree_, selectiveCloud2, tableHeight_, true);
 		updateFreeVoxels(octree_);
 		/*
 			//int n_x_voxels = (octree_->getBBXMax().x() - octree_->getBBXMin().x())/octree_->getResolution();
@@ -688,8 +794,43 @@ bool Planner::planRequestCallback(tum_os::PlanService::Request &plan_request,
 		 */
 		ROS_INFO("Displaying octree");
 		display_octree(octree_);
-		breakpoint();
+		//breakpoint();
 	} else {
+		octomap::OcTree* octree = new octomap::OcTree(0.01);
+		octree->setBBXMin(octo_bbmin);
+		octree->setBBXMax(octo_bbmax);
+		octree->bbxSet();
+		octree->useBBXLimit(true);
+		//octree->enableChangeDetection(true);
+
+		octree->insertScan(octomapCloud, octomapCameraOrigin_);
+		ROS_INFO("Displaying new octree before updating it");
+		//breakpoint();
+		display_octree(octree);
+		breakpoint();
+
+		std::list<octomap::OcTreeVolume> occupiedVoxels;
+		octree->getOccupied(occupiedVoxels);
+		unsigned int n_occupied_before = occupiedVoxels.size();
+		updateHiddenVoxels(tf::Vector3(octomapCameraOrigin_.x(), octomapCameraOrigin_.y(), octomapCameraOrigin_.z()), octree, selectiveCloud2, tableHeight_, true);
+		updateFreeVoxels(octree);
+
+		ROS_INFO("Displaying new octree after update");
+		//breakpoint();
+		display_octree(octree);
+		//breakpoint();
+		std::list<octomap::OcTreeVolume> occupiedVoxels2;
+		octree->getOccupied(occupiedVoxels2);
+		unsigned int n_occupied_after = occupiedVoxels2.size();
+		octree_ = octree;
+
+		if (n_occupied_after - n_occupied_before < 5) {
+			ROS_INFO("All space explored.");
+			ROS_INFO("It took %f seconds to explore.", totalPlanningTime);
+			breakpoint();
+		}
+
+		/*
 		octomap::OcTree* octree = new octomap::OcTree(0.01);
 		octree->insertScan(octomapCloud, octomapCameraOrigin_);
 		updateHiddenVoxels(tf::Vector3(octomapCameraOrigin_.x(), octomapCameraOrigin_.y(), octomapCameraOrigin_.z()), octree, shelfCloud2, tableHeight_, true);
@@ -699,25 +840,12 @@ bool Planner::planRequestCallback(tum_os::PlanService::Request &plan_request,
 			octree->genKey(it->first, key);
 			octree->updateNode(key, false);
 		}
-		/*for (std::list<octomap::OcTreeVolume>::iterator it = occupiedVoxels_.begin(); it != occupiedVoxels_.end(); ++it) {
-				octomap::OcTreeKey key;
-				octree->genKey(it->first, key);
-				octree->updateNode(key, true);
-			}*/
+
 		octree_ = octree;
 		ROS_INFO("Displaying octree");
 		display_octree(octree_);
 		breakpoint();
-		//Use current config to update the tree
-		/*
-			pcl::PointCloud<PointT>::Ptr current_config(new pcl::PointCloud<PointT>);
-			fromROSMsg(currentConfigPCL_, *current_config);
-			for (size_t i = 0; i < current_config->points.size(); i++) {
-				octomap::point3d coord(current_config->points[i].x, current_config->points[i].y, current_config->points[i].z);
-				octomap::OcTreeKey key;
-				octree_->genKey(coord, key);
-				octree_->updateNode(key, true);
-			}*/
+		*/
 	}
 	//octree_->updateInnerOccupancy() ??
 
@@ -728,7 +856,6 @@ bool Planner::planRequestCallback(tum_os::PlanService::Request &plan_request,
 	return true;
 }
 
-
 void Planner::call_plan(sensor_msgs::PointCloud2 objectCloud2)
 {
 	//objectCloudPub_.publish(objectCloud2);
@@ -737,7 +864,7 @@ void Planner::call_plan(sensor_msgs::PointCloud2 objectCloud2)
 	pubCloud("object_cloud_permanent", objectCloud, fixed_frame_);
 
 	ROS_INFO("Displaying the object cloud for planning");
-	breakpoint();
+	//breakpoint();
 
 	ROS_INFO("Found %zu clusters", clustersDetected_.size());
 	if (clustersDetected_.size() == 0) {
@@ -763,13 +890,30 @@ void Planner::call_plan(sensor_msgs::PointCloud2 objectCloud2)
 
 	vector<Move> best_next_action_sequence;
 	double total_percentage_revealed_so_far = 0.0;
+	vector<bool> beenMoved(false, beenMoved_.size());
+	vector<sensor_msgs::PointCloud2> config;
+	config.resize(knownObjects_.size());
+	for (unsigned int i = 0; i < beenMoved_.size(); i++) {
+		if (beenMoved_[i] == true)
+			beenMoved[i] = true;
+		config[i] = knownObjects_[i].second;
+	}
+	vector<unsigned int> moved_so_far;
 	time_t tstart, tend;
 	ROS_INFO("Starting to plan.");
 	tstart = time(0);
-	plan(MAX_HORIZON, clustersDetected_, objectCloud2_, best_next_action_sequence, total_percentage_revealed_so_far);
+	last_tstart = tstart;
+	int orig_horizon = MAX_HORIZON;
+	//plan(MAX_HORIZON, clustersDetected_, octree_, objectCloud2_, best_next_action_sequence, total_percentage_revealed_so_far);
+	plan(MAX_HORIZON, config, octree_, beenMoved, best_next_action_sequence, total_percentage_revealed_so_far, moved_so_far);
+	//random_plan(MAX_HORIZON, config, octree_, objectCloud2_, best_next_action_sequence, total_percentage_revealed_so_far);
 	tend = time(0);
+	MAX_HORIZON = orig_horizon;
+	planningIteration++;
+
 	ROS_INFO("Found the best next action sequence for horizon %d of length %zu", MAX_HORIZON, best_next_action_sequence.size());
 	ROS_INFO("It took %f seconds to plan.", difftime(tend, tstart));
+	totalPlanningTime += difftime(tend, tstart);
 	action_sequence_ = best_next_action_sequence;
 	ROS_INFO("%zu moves in the action sequence", best_next_action_sequence.size());
 	if (best_next_action_sequence.size() == 0)
@@ -795,40 +939,19 @@ void Planner::call_plan(sensor_msgs::PointCloud2 objectCloud2)
 		dest_pose_pub_.publish(dest_pose);
 		ROS_INFO("Move the object.");
 		breakpoint();
-
-		/*
-		vector<sensor_msgs::PointCloud2> new_config;
-		simulateMove(current_config, action_sequence_[i], new_config);
-		//octree_->getFreespace(freeVoxels_);
-		//octree_->getOccupied(occupiedVoxels_);
-		pcl::PointCloud<PointT> new_moved_object, old_moved_object;
-		fromROSMsg(new_config[action_sequence_[i].cluster_idx], new_moved_object);
-		fromROSMsg(current_config[action_sequence_[i].cluster_idx], old_moved_object);
-
-		//std::list<octomap::OcTreeKey> old_keys, new_keys;
-		for (size_t p = 0; p < new_moved_object.points.size(); p++) {
-			octomap::point3d new_coord(new_moved_object.points[p].x, new_moved_object.points[p].y, new_moved_object.points[p].z);
-			octomap::point3d old_coord(old_moved_object.points[p].x, old_moved_object.points[p].y, old_moved_object.points[p].z);
-			octomap::OcTreeKey new_key, old_key;
-			octree_->genKey(new_coord, new_key);
-			octree_->genKey(old_coord, old_key);
-			octree_->updateNode(new_key, true);
-			octree_->updateNode(old_key, false);
-			//old_keys.push_back(old_key);
-			//new_keys.push_back(new_key);
-		}
-		current_config = new_config;
-		new_config.clear();
-		*/
 	}
 
 	new_data_wanted_ = true;
 
+	//Manually execute the plan
+	//manual_plan_execution(config);
+
 	//Execute plan
-	//execute_plan();
+	if (best_next_action_sequence.size() > 0)
+		execute_plan();
 
 	//Simulate Plan execution
-	simulate_plan_execution();
+	//simulate_plan_execution();
 
 /*
 	if (new_data_wanted_)
@@ -850,25 +973,10 @@ void Planner::call_plan(sensor_msgs::PointCloud2 objectCloud2)
 }
 
 
-void Planner::simulate_plan_execution()
+void Planner::manual_plan_execution(vector<sensor_msgs::PointCloud2> current_config)
 {
-	vector<sensor_msgs::PointCloud2> current_config = clustersDetected_;
+	//vector<sensor_msgs::PointCloud2> current_config = clustersDetected_;
 	vector<sensor_msgs::PointCloud2> new_config;
-	//vector<sensor_msgs::PointCloud2> selectiveVec = current_config;
-	vector<sensor_msgs::PointCloud2> selectiveVec;
-
-	for (size_t i = 0; i < current_config.size(); i++) {
-		bool moved = false;
-		for (size_t j = 0; j < action_sequence_.size(); j++) {
-			if (i == action_sequence_[j].cluster_idx) {
-				moved = true;
-				break;
-			}
-		}
-		if (!moved)
-			selectiveVec.push_back(current_config[i]);
-	}
-	sensor_msgs::PointCloud2 selectiveCloud2 = concatClouds(selectiveVec);
 
 	geometry_msgs::PoseStamped source_pose, dest_pose;
 	source_pose.header.frame_id = "base_link";
@@ -876,7 +984,7 @@ void Planner::simulate_plan_execution()
 	dest_pose.header.frame_id = "base_link";
 	dest_pose.header.stamp = ros::Time::now();
 
-	bool action_success = true;
+	//bool action_success = true;
 	//unsigned int moved_idx = action_sequence_[0].cluster_idx;
 	for (size_t i = 0; i < action_sequence_.size(); i++)
 	{
@@ -895,6 +1003,68 @@ void Planner::simulate_plan_execution()
 		pubCloud("new_simulated_config", new_config_cloud, fixed_frame_);
 		ROS_INFO("Published new config on new_simulated_config topic");
 
+		unsigned int known_idx = cluster_to_known_idx_map_[action_sequence_[i].cluster_idx];
+		ROS_INFO("Action %zu: known index = %u", i, known_idx);
+		beenMoved_[known_idx] = true;
+		pcl::PointCloud<PointT> new_moved_cloud;
+		fromROSMsg(new_config[action_sequence_[i].cluster_idx], new_moved_cloud);
+		vector<geometry_msgs::Point> extents = find_extents(new_moved_cloud);
+		tf::Vector3 new_centroid(extents[0].x + (extents[1].x - extents[0].x)/2.0f,
+				extents[2].y + (extents[3].y - extents[2].y)/2.0f,
+				extents[4].z + (extents[5].z - extents[4].z)/2.0f);
+		//tf::Vector3 dimensions(extents[1].x - extents[0].x, extents[3].y - extents[2].y, extents[5].z - extents[4].z);
+		ROS_INFO("Here");
+		knownObjects_[known_idx] = std::make_pair(new_centroid, new_config[action_sequence_[i].cluster_idx]);
+
+		current_config = new_config;
+		new_config.clear();
+		//breakpoint();
+	}
+}
+
+void Planner::simulate_plan_execution()
+{
+	vector<sensor_msgs::PointCloud2> current_config = clustersDetected_;
+	vector<sensor_msgs::PointCloud2> new_config;
+
+	geometry_msgs::PoseStamped source_pose, dest_pose;
+	source_pose.header.frame_id = "base_link";
+	source_pose.header.stamp = ros::Time::now();
+	dest_pose.header.frame_id = "base_link";
+	dest_pose.header.stamp = ros::Time::now();
+
+	//bool action_success = true;
+	//unsigned int moved_idx = action_sequence_[0].cluster_idx;
+	for (size_t i = 0; i < action_sequence_.size(); i++)
+	{
+		ROS_INFO("Executing move %zu in simulation", i);
+		source_pose.pose = tfPoseToGeometryPose(action_sequence_[i].sourcePose);
+		dest_pose.pose = tfPoseToGeometryPose(action_sequence_[i].destPose);
+		source_pose_pub_.publish(source_pose);
+		dest_pose_pub_.publish(dest_pose);
+		//breakpoint();
+
+		//Executing plan in simulation
+		simulateMove(current_config, action_sequence_[i], new_config);
+		pcl::PointCloud<PointT>::Ptr new_config_cloud(new pcl::PointCloud<PointT>);
+		fromROSMsg(concatClouds(new_config), *new_config_cloud);
+		//ROS_DEBUG("Publishing new simulated config on topic new_simulated_config");
+		pubCloud("new_simulated_config", new_config_cloud, fixed_frame_);
+		ROS_INFO("Published new config on new_simulated_config topic");
+
+		unsigned int known_idx = cluster_to_known_idx_map_[action_sequence_[i].cluster_idx];
+		ROS_INFO("Action %zu: known index = %u", i, known_idx);
+		beenMoved_[known_idx] = true;
+		pcl::PointCloud<PointT> new_moved_cloud;
+		fromROSMsg(new_config[action_sequence_[i].cluster_idx], new_moved_cloud);
+		vector<geometry_msgs::Point> extents = find_extents(new_moved_cloud);
+		tf::Vector3 new_centroid(extents[0].x + (extents[1].x - extents[0].x)/2.0f,
+				extents[2].y + (extents[3].y - extents[2].y)/2.0f,
+				extents[4].z + (extents[5].z - extents[4].z)/2.0f);
+		//tf::Vector3 dimensions(extents[1].x - extents[0].x, extents[3].y - extents[2].y, extents[5].z - extents[4].z);
+		ROS_INFO("Here");
+		knownObjects_[known_idx] = std::make_pair(new_centroid, new_config[action_sequence_[i].cluster_idx]);
+
 		ROS_INFO("Displaying old octree before updating it");
 		breakpoint();
 		display_octree(octree_);
@@ -905,18 +1075,33 @@ void Planner::simulate_plan_execution()
 		//breakpoint();
 	}
 
+	vector<sensor_msgs::PointCloud2> selectiveVec, vec_known_object_cloud2;;
+	vec_known_object_cloud2.resize(numKnownObjects_);
+	for (size_t i = 0; i < numKnownObjects_; i++) {
+		vec_known_object_cloud2[i] = knownObjects_[i].second;
+		if (beenMoved_[i] == false)
+			selectiveVec.push_back(knownObjects_[i].second);
+	}
+	sensor_msgs::PointCloud2 selectiveCloud2 = concatClouds(selectiveVec);
+
 	sensor_msgs::PointCloud2 newObjectCloud2 = concatClouds(current_config);
+	sensor_msgs::PointCloud2 known_object_cloud2 = concatClouds(vec_known_object_cloud2);
 	pcl::PointCloud<PointT>::Ptr current_config_cloud(new pcl::PointCloud<PointT>);
+	pcl::PointCloud<PointT>::Ptr known_object_cloud(new pcl::PointCloud<PointT>);
 	fromROSMsg(newObjectCloud2, *current_config_cloud);
-	pubCloud("current_simulated_config", current_config_cloud, fixed_frame_);
-	ROS_INFO("Published current config on current_simulated_config topic");
+	fromROSMsg(known_object_cloud2, *known_object_cloud);
+	//pubCloud("current_simulated_config", current_config_cloud, fixed_frame_);
+	pubCloud("current_simulated_config", known_object_cloud, fixed_frame_);
+	ROS_INFO("Published known objects on current_simulated_config topic");
 	//currentConfigPCL_ = newObjectCloud2;
 	//newObjectCloud2.header.frame_id = fixed_frame_;
 	//Euclidean segmentation
-	cluster(newObjectCloud2, 0.02, 50, 10000, clustersDetected_);
+	//cluster(newObjectCloud2, 0.02, 50, 10000, clustersDetected_);
+	cluster(known_object_cloud2, 0.02, 50, 10000, clustersDetected_);
 
 	octomap::Pointcloud octomapCloud;
-	octomap::pointcloudPCLToOctomap (*current_config_cloud, octomapCloud);
+	//octomap::pointcloudPCLToOctomap (*current_config_cloud, octomapCloud);
+	octomap::pointcloudPCLToOctomap (*known_object_cloud, octomapCloud);
 	octomap::point3d octo_bbmin(BB_MIN.x(), BB_MIN.y(), BB_MIN.z()-0.01), octo_bbmax(BB_MAX.x(), BB_MAX.y(), BB_MAX.z());
 
 	ROS_INFO("Size of octree = %zu", octree_->size());
@@ -951,13 +1136,10 @@ void Planner::simulate_plan_execution()
 		breakpoint();
 
 		octree_ = octree;
-		ROS_INFO("Displaying current octree");
-		breakpoint();
-		display_octree(octree_);
-		breakpoint();
 	}
 
-	call_plan(newObjectCloud2);
+	//call_plan(newObjectCloud2);
+	call_plan(known_object_cloud2);
 }
 
 
@@ -967,7 +1149,8 @@ void Planner::samplePose(sensor_msgs::PointCloud2 target_cloud2,
 						 tf::Vector3 sampling_bb_max,
 						 vector<tf::Pose>& object_posterior_belief,
 						 bool check_hidden,
-						 bool check_visible)
+						 bool check_visible,
+						 bool push)
 {
 	//This function samples the whole space for valid poses of the object_cloud.
 	//Then it checks whether they lie in the free space and returns an object belief.
@@ -978,8 +1161,10 @@ void Planner::samplePose(sensor_msgs::PointCloud2 target_cloud2,
 		ROS_DEBUG("Sampling in free space");
 	*/
 	
+	//TODO: Sample only hidden space, not occupied.
+
 	//ROS_DEBUG("before creating samples");
-	int n_belief = 500;
+	int n_belief = 50;
 	if (check_hidden)
 		n_belief = 50000;
     std::vector<tf::Pose> object_belief;
@@ -1005,9 +1190,13 @@ void Planner::samplePose(sensor_msgs::PointCloud2 target_cloud2,
     	//Check if the resulting pose touches the table
     	if (check_visible && (it->getOrigin().getZ() - object_height/2 - tableHeight_ <= 0.02) &&
     			(it->getOrigin().getZ() - object_height/2 - tableHeight_ > 0)) {
+    		if (push) {
+    			it->setRotation(tf::Quaternion(0.0, 0.0, 0.0, 1.0));
+    			object_posterior_belief.push_back(*it);
+    		}
     		//Now check if the pose is hidden or not
     		//TODO: This is wrong!!! Need to pass modified octree with the object being moved missing
-    		if (checkHiddenOrVisible(target_cloud2, octree, *it, identity, check_hidden, check_visible))
+    		else if (checkHiddenOrVisible(target_cloud2, octree, *it, identity, check_hidden, check_visible))
     			object_posterior_belief.push_back(*it);
     	} else if (check_hidden && (it->getOrigin().getZ() - object_height/2 - tableHeight_ <= 0.02) &&
     			(it->getOrigin().getZ() - object_height/2 - tableHeight_ > 0))
@@ -1019,8 +1208,8 @@ void Planner::samplePose(sensor_msgs::PointCloud2 target_cloud2,
     //ROS_DEBUG("samples checked");
     ROS_DEBUG("Size of object belief = %zu", object_posterior_belief.size());
     pub_belief("valid_pose_samples",object_posterior_belief);
-    ROS_INFO("Published valid poses");
-    breakpoint();
+    ROS_DEBUG("Published valid poses");
+    //breakpoint();
 }
 
 bool Planner::checkHiddenOrVisible(sensor_msgs::PointCloud2 object_cloud2,
@@ -1128,6 +1317,7 @@ void Planner::make_grid(vector<sensor_msgs::PointCloud2> config)
 	ROS_INFO("Grid resolution = %f", grid_resolution);
 	grid_resolution_ = grid_resolution;
 }
+
 
 void Planner::display_grid()
 {
@@ -1239,23 +1429,25 @@ bool Planner::inFront(pcl::PointCloud<PointT> cloud, int cluster_idx)
 	return true;
 }
 
-void Planner::findMovable(vector<sensor_msgs::PointCloud2> config,
+void Planner::findMovable(vector<sensor_msgs::PointCloud2> visible_clusters,
 		vector<sensor_msgs::PointCloud2>& movable_clusters, vector<int>& movable_idx)
 {
 	//Find which clusters have full frontal visibility
-	for (size_t i = 0; i < config.size(); i++)
+	for (size_t i = 0; i < visible_clusters.size(); i++)
 	{
 		pcl::PointCloud<PointT> cloud;
-		fromROSMsg(config[i], cloud);
+		fromROSMsg(visible_clusters[i], cloud);
 
 		if (touchesTable(cloud, tableHeight_) && (cloud.points.size() >= 125)) { //The size check is to ensure that we see a big enough cluster
 			//This cluster is in contact with the table
-			ROS_INFO("Cluster %zu touches the table", i);
+			ROS_DEBUG("Cluster %zu touches the table", i);
 			//TODO: Need better logic for inFront using bounding boxes
-			if (inFront(cloud, (int)i))	{
-				ROS_INFO("Cluster %zu is in front and fully visible", i);
-				movable_clusters.push_back(config[i]);
-				movable_idx.push_back((int)i);
+			//if (inFront(cloud, (int)i))	{
+			if (inFrontAlt(cluster_to_known_idx_map_[i])) {
+				ROS_DEBUG("Cluster %zu is in front and fully visible", i);
+				movable_clusters.push_back(visible_clusters[i]);
+				//movable_idx.push_back((int)i);
+				movable_idx.push_back((int)(cluster_to_known_idx_map_[i]));
 			}
 		}
 	}
@@ -1263,6 +1455,29 @@ void Planner::findMovable(vector<sensor_msgs::PointCloud2> config,
 	ROS_INFO("Found %zu movable clusters", movable_clusters.size());
 	//breakpoint();
 }
+
+bool Planner::inFrontAlt(unsigned int cluster_idx)
+{
+	float this_lefty = knownObjects_[cluster_idx].first.y() + knownObjectDimensions_[cluster_idx].y()/2.f;	//Left boundary
+	float this_righty = knownObjects_[cluster_idx].first.y() - knownObjectDimensions_[cluster_idx].y()/2.f;	//Right boundary
+
+	for (size_t i = 0; i < knownObjects_.size(); i++) {
+		if (knownObjects_[i].first.x() - knownObjects_[cluster_idx].first.x() >= 0)
+			continue;
+
+		float known_lefty = knownObjects_[i].first.y() + knownObjectDimensions_[i].y()/2.f;	//Left boundary
+		float known_righty = knownObjects_[i].first.y() - knownObjectDimensions_[i].y()/2.f;	//Right boundary
+
+		if (this_righty - known_lefty < 0.04 && this_lefty >= known_lefty)
+			return false;
+		else if (known_righty - this_lefty < 0.04 && known_righty >= this_righty)
+			return false;
+		else if (this_lefty <= known_lefty && this_lefty >= known_righty && this_righty >= known_righty && this_righty <= known_lefty)
+			return false;
+	}
+	return true;
+}
+
 
 
 bool Planner::generatePercentageIfRemoved(vector<tf::Pose> object_belief,
@@ -1402,21 +1617,23 @@ void Planner::findPossibleMoves(octomap::OcTree* octree,
 		ROS_DEBUG("Finding destination poses for visible cluster %zu", cluster_idx);
 		//Check if the object is too big to be grasped, can only be pushed
 		//if (max.y() - min.y() > 0.085f) {
-		if (extents[3].y - extents[2].y > 0.085f) {
+
+		if (extents[3].y - extents[2].y > 0.09f) {
 			ROS_INFO("Object too big in y dimension. Can't be grasped from front. Needs to be pushed.");
-			tf::Vector3 sampling_bb_min(centroid.x(), max(centroid.y()-0.1f, BB_MIN.y()+dimensions.y()/2.0f+0.01), BB_MIN.z());
-			tf::Vector3 sampling_bb_max(min(centroid.x()+0.1f, BB_MAX.x()-dimensions.x()/2.0f-0.01),
-					min(centroid.y()+0.1f, BB_MAX.y()-dimensions.y()/2.0f-0.01), BB_MAX.getZ());
+			tf::Vector3 sampling_bb_min(centroid.x(), max(centroid.y()-0.15f, BB_MIN.y()+dimensions.y()/2.0f+0.01), BB_MIN.z());
+			tf::Vector3 sampling_bb_max(min(centroid.x(), BB_MAX.x()-dimensions.x()/2.0f-0.01),
+					min(centroid.y()+0.15f, BB_MAX.y()-dimensions.y()/2.0f-0.01), BB_MAX.getZ());
 			push = true;
 			//samplePose(movable_clusters[cluster_idx], concatCloudTTO, sampling_bb_min, sampling_bb_max, destination_poses, false, true);
-			samplePose(movable_clusters[cluster_idx], octree, sampling_bb_min, sampling_bb_max, destination_poses, false, true);
+			samplePose(movable_clusters[cluster_idx], octree, sampling_bb_min, sampling_bb_max, destination_poses, false, true, push);
 		} else {
-			//tf::Vector3 sampling_bb_min(BB_MIN.x()+0.05f, BB_MIN.y()+0.05f, BB_MIN.z());
+			//tf::Vector3 sampling_bb_min(centroid.x(), max(centroid.y()-0.15f, BB_MIN.y()+dimensions.y()/2.0f+0.01), BB_MIN.z());
+			//tf::Vector3 sampling_bb_max(min(centroid.x(), BB_MAX.x()-dimensions.x()/2.0f-0.01),
+				//				min(centroid.y()+0.15f, BB_MAX.y()-dimensions.y()/2.0f-0.01), BB_MAX.getZ());
 			tf::Vector3 sampling_bb_min(BB_MIN.x()+0.05f, BB_MIN.y()+0.05f, centroid.z() - 0.02);
-			//tf::Vector3 sampling_bb_max(BB_MAX.getX()-0.05f, BB_MAX.getY()-0.05f, BB_MAX.getZ());
 			tf::Vector3 sampling_bb_max(BB_MAX.getX()-0.05f, BB_MAX.getY()-0.05f, centroid.z() + 0.02);
 			//samplePose(movable_clusters[cluster_idx], concatCloudTTO, sampling_bb_min, sampling_bb_max, destination_poses, false, true);
-			samplePose(movable_clusters[cluster_idx], octree, sampling_bb_min, sampling_bb_max, destination_poses, false, true);
+			samplePose(movable_clusters[cluster_idx], octree, sampling_bb_min, sampling_bb_max, destination_poses, false, true, push);
 		}
 
 		//Create moves for this object
@@ -1487,39 +1704,25 @@ void Planner::simulateMove(vector<sensor_msgs::PointCloud2> config,
 
 void Planner::plan(int horizon,
 		vector<sensor_msgs::PointCloud2> config,
-		sensor_msgs::PointCloud2 other_cloud,
+		octomap::OcTree* octree,
+		vector<bool> beenMoved,
 		vector<Move>& action_sequence_so_far,
-		double& total_percentage_revealed_so_far)
+		double& total_percentage_revealed_so_far,
+		vector<unsigned int>& moved_so_far)
+//sensor_msgs::PointCloud2 other_cloud,
 {
-	//Config: All clusters, big and small
+	//Config: All known objects
 	//other_cloud: The whole object cloud with all clusters, big and small
 	//movable_clusters: Clusters that are big enough to be manipulated, that are in contact with the table, and in front
 
 	ROS_DEBUG("Plan: horizon %d", horizon);
 
-	//Sample target pose
-	ROS_DEBUG("Sampling target object pose in occluded space");
-	std::vector<tf::Pose> object_posterior_belief;
-	tf::Vector3 sampling_bb_min(BB_MIN.getX()+0.05, BB_MIN.getY()+0.05, BB_MIN.getZ());
-	tf::Vector3 sampling_bb_max(BB_MAX.getX()-0.05, BB_MAX.getY()-0.05, BB_MAX.getZ());
-	//samplePose(targetCloud2_, createTTO(other_cloud), sampling_bb_min, sampling_bb_max, object_posterior_belief, true, false);
-	samplePose(targetCloud2_, octree_, sampling_bb_min, sampling_bb_max, object_posterior_belief, true, false);
-	ROS_INFO("Sampled target pose");
-	breakpoint();
-
-	make_grid(config);
-	if (horizon == MAX_HORIZON) {
-		display_grid();
-		pubCloud("other_cloud_TTO", (createTTO(other_cloud)).getAsCloud() , fixed_frame_);
-		ROS_INFO("Displaying grid.");
-		breakpoint();
-	}
-	findGridLocations(config);
-
 	//Find movable clusters
 	ROS_DEBUG("Finding movable clusters");
 	vector<sensor_msgs::PointCloud2> movable_clusters;
 	vector<int> movable_idx;
+	//findMovable(config, movable_clusters, movable_idx);
+	//findMovable(visible_clusters, movable_clusters, movable_idx);
 	findMovable(config, movable_clusters, movable_idx);
 	if (horizon == MAX_HORIZON)
 		ROS_INFO("Horizon %d: Found %zu movable clusters", horizon, movable_clusters.size());
@@ -1528,12 +1731,60 @@ void Planner::plan(int horizon,
 		ROS_ERROR("No movable clusters. Exiting.");
 		return;
 	}
+	//breakpoint();
 
-	breakpoint();
+	//Detecting target object based on size
+	if (horizon == MAX_HORIZON) {
+		for (size_t k = 0; k < movable_clusters.size(); k++) {
+			//if (fabs(bbx.dimensions.x - target_x) < 0.04 && fabs(bbx.dimensions.y - target_y) < 0.03 && fabs(bbx.dimensions.z - target_z) < 0.02)
+			unsigned int idx = movable_idx[k];
+			if (fabs(knownObjectDimensions_[idx].x() - target_x) < 0.04 && fabs(knownObjectDimensions_[idx].y() - target_y) < 0.03 && fabs(knownObjectDimensions_[idx].z() - target_z) < 0.02)
+			{
+				//TODO: Also check for color?
+				ROS_ERROR("Target object spotted! SUCCESS!");
+				clustersPub_.publish(knownObjects_[idx].second);
+				time_t tfound = time(0);
+				ROS_INFO("Took %f seconds to find target", totalPlanningTime + difftime(tfound,last_tstart));
+				breakpoint();
+				//ros::shutdown();
+			}
+		}
+	}
+
+	//Sample target pose
+	ROS_DEBUG("Sampling target object pose in occluded space");
+	std::vector<tf::Pose> object_posterior_belief;
+	//tf::Vector3 sampling_bb_min(BB_MIN.getX()+0.05, BB_MIN.getY()+0.05, BB_MIN.getZ());
+	tf::Vector3 sampling_bb_min(BB_MIN.getX()+0.05, BB_MIN.getY()+0.05, tableHeight_+target_z/2.0 - 0.02);
+	//tf::Vector3 sampling_bb_max(BB_MAX.getX()-0.05, BB_MAX.getY()-0.05, BB_MAX.getZ());
+	tf::Vector3 sampling_bb_max(BB_MAX.getX()-0.05, BB_MAX.getY()-0.05, tableHeight_+target_z/2.0 + 0.02);
+	//samplePose(targetCloud2_, createTTO(other_cloud), sampling_bb_min, sampling_bb_max, object_posterior_belief, true, false);
+	samplePose(targetCloud2_, octree, sampling_bb_min, sampling_bb_max, object_posterior_belief, true, false, false);
+	ROS_INFO("Sampled target pose. Found %zu valid samples", object_posterior_belief.size());
+	//breakpoint();
+
+	/*
+	if (object_posterior_belief.size() == 0 && horizon == MAX_HORIZON) {
+		ROS_ERROR("All space explored.");
+		time_t texplored = time(0);
+		ROS_INFO("Took %f seconds to explore all space", totalPlanningTime + difftime(texplored,last_tstart));
+		breakpoint();
+		return;
+	}
+	*/
+
+	//make_grid(config);
+	//if (horizon == MAX_HORIZON) {
+		//display_grid();
+		//pubCloud("other_cloud_TTO", (createTTO(other_cloud)).getAsCloud() , fixed_frame_);
+		//ROS_INFO("Displaying grid.");
+		//breakpoint();
+	//}
+	//findGridLocations(config);
 
 	//Find possible moves
 	vector<Move> possible_moves;
-	findPossibleMoves(octree_, movable_clusters, movable_idx, possible_moves);
+	findPossibleMoves(octree, movable_clusters, movable_idx, possible_moves);
 	if (horizon == MAX_HORIZON)
 		ROS_INFO("Horizon %d: Found %zu possible moves", horizon, possible_moves.size());
 
@@ -1545,16 +1796,27 @@ void Planner::plan(int horizon,
 	unsigned int move_in_collision = 0;
 	for (size_t move_idx = 0; move_idx < possible_moves.size(); move_idx++) {
 	//for (size_t move_idx = 0; move_idx < (size_t)std::min(5, (int)possible_moves.size()); move_idx++) {
+		Move this_move = possible_moves[move_idx];
+
+		if (horizon == MAX_HORIZON)
+			moved_so_far.clear();
+
+		//Checking if this object has already been moved in this iteration
+		vector<unsigned int>::iterator it = find(moved_so_far.begin(), moved_so_far.end(), this_move.cluster_idx);
+		if (it != moved_so_far.end())
+			continue;
+
 		ROS_DEBUG("Horizon %d: Simulating move %zu", horizon, move_idx);
 		double percentage_revealed_so_far = total_percentage_revealed_so_far;
-		Move this_move = possible_moves[move_idx];
+
 		vector<Move> action_sequence = action_sequence_so_far;
 		action_sequence.push_back(this_move);
 
 		//Simulate move & find resulting config
 		pcl::PointCloud<PointT>::Ptr config_cloud(new pcl::PointCloud<PointT>);
 		pcl::PointCloud<PointT>::Ptr new_config_cloud(new pcl::PointCloud<PointT>);
-		fromROSMsg(other_cloud, *config_cloud);
+		//fromROSMsg(other_cloud, *config_cloud);
+		fromROSMsg(concatClouds(config), *config_cloud);
 		ROS_DEBUG("Publishing current simulated config cloud on topic current_simulated_config");
 		pubCloud("current_simulated_config", config_cloud, fixed_frame_);
 		vector<sensor_msgs::PointCloud2> new_config;
@@ -1563,16 +1825,18 @@ void Planner::plan(int horizon,
 		//ROS_DEBUG("Publishing new simulated config on topic new_simulated_config");
 		pubCloud("new_simulated_config", new_config_cloud, fixed_frame_);
 		
-		if (move_idx == 1) {
+
+		if (move_idx == 6) {
 			ROS_INFO("Displaying new config after one of the moves.");
 			//breakpoint();
 		}
+
 
 		bool in_contact = false;
 		//TODO: This is not working reliably!
 		for (unsigned int m = 0; m < new_config.size(); m++) {
 			if (m != this_move.cluster_idx)
-				if (incontact(new_config[m], new_config[this_move.cluster_idx], 0.02, 150, 2000)) {
+				if (incontact(new_config[m], new_config[this_move.cluster_idx], 0.05, 150, 2000)) {
 					ROS_DEBUG("The moved cloud touches some other object. reject this move.");
 					in_contact = true;
 					move_in_collision++;
@@ -1581,20 +1845,26 @@ void Planner::plan(int horizon,
 		}
 
 		//breakpoint();
-		if (in_contact)	continue;
+		//if (in_contact)	continue;
+
+		moved_so_far.push_back(this_move.cluster_idx);
+		//Generate new octree resulting from this move
+		octomap::OcTree* new_octree = new octomap::OcTree(0.01);
+		//for (unsigned int k = 0; k < beenMoved_.)
+		beenMoved[cluster_to_known_idx_map_[this_move.cluster_idx]] = true;
+		generateOctree(new_config, beenMoved, new_octree);
 
 		//Find percentage revealed by this move
-		double this_percentage_revealed = generatePercentageIfDisplaced(object_posterior_belief, new_config, octree_);
+		double this_percentage_revealed = generatePercentageIfDisplaced(object_posterior_belief, new_config, new_octree);
 		//double this_percentage_revealed = percentage[this_move.cluster_idx];
 		percentage_revealed_so_far += this_percentage_revealed;	// + percentage_revealed_so_far;
+		ROS_DEBUG("percentage revealed by this move = %f", percentage_revealed_so_far);
 		
 		if (horizon > 1) {
 			//Plan recursively
-			//TODO: Disallow consecutive moves of the same object
-			plan(horizon-1, new_config, concatClouds(new_config), action_sequence, percentage_revealed_so_far);
-		} //else {
-			//best_next_action_sequence.clear();
-		//}
+			//plan(horizon-1, new_config, octree, concatClouds(new_config), action_sequence, percentage_revealed_so_far);
+			plan(horizon-1, new_config, new_octree, beenMoved, action_sequence, percentage_revealed_so_far, moved_so_far);
+		}
 
 		if (percentage_revealed_so_far > info_gain) {
 			//This action reveals more than previously tested actions
@@ -1603,25 +1873,36 @@ void Planner::plan(int horizon,
 		}
 	}
 	
-	ROS_INFO("Horizon %d: Found %u moves in collision", horizon, move_in_collision);
-	total_percentage_revealed_so_far = info_gain;
-	action_sequence_so_far = best_action_sequence;
-	//best_next_action_sequence.insert(best_next_action_sequence.begin(), best_action);
-	ROS_DEBUG("Found the best next action sequence for horizon %d of length %zu", horizon, action_sequence_so_far.size());
+	if (info_gain == 0.0 && horizon == MAX_HORIZON) {
+		ROS_INFO("Did not find an informative move. Increasing the horizon.");
+		breakpoint();
+		horizon++;
+		MAX_HORIZON++;
+		plan(horizon, config, octree, beenMoved, action_sequence_so_far, total_percentage_revealed_so_far, moved_so_far);
+	} else {
+		ROS_DEBUG("Horizon %d: Found %u moves in collision", horizon, move_in_collision);
+		total_percentage_revealed_so_far = info_gain;
+		action_sequence_so_far = best_action_sequence;
+		//best_next_action_sequence.insert(best_next_action_sequence.begin(), best_action);
+		ROS_DEBUG("Found the best next action sequence for horizon %d of length %zu with info gain = %f",
+				horizon, action_sequence_so_far.size(), info_gain);
+	}
 }
 
-/*
+
 void Planner::random_plan(int horizon,
 		vector<sensor_msgs::PointCloud2> config,
+		octomap::OcTree* octree,
 		sensor_msgs::PointCloud2 other_cloud,
-		vector<Move>& action_sequence_so_far)
+		vector<Move>& action_sequence_so_far,
+		double& total_percentage_revealed_so_far)
 {
 	ROS_DEBUG("Plan: horizon %d", horizon);
 
-	make_grid(config);
-	if (horizon == MAX_HORIZON)
-		display_grid();
-	findGridLocations(config);
+	//make_grid(config);
+	//if (horizon == MAX_HORIZON)
+		//display_grid();
+	//findGridLocations(config);
 
 	//Find movable clusters
 	ROS_DEBUG("Finding movable clusters");
@@ -1636,9 +1917,24 @@ void Planner::random_plan(int horizon,
 		return;
 	}
 
+	//Detecting target object based on size
+	for (size_t k = 0; k < movable_clusters.size(); k++) {
+		//if (fabs(bbx.dimensions.x - target_x) < 0.04 && fabs(bbx.dimensions.y - target_y) < 0.03 && fabs(bbx.dimensions.z - target_z) < 0.02)
+		unsigned int idx = movable_idx[k];
+		if (fabs(knownObjectDimensions_[idx].x() - target_x) < 0.04 && fabs(knownObjectDimensions_[idx].y() - target_y) < 0.03 && fabs(knownObjectDimensions_[idx].z() - target_z) < 0.02)
+		{
+			ROS_ERROR("Target object spotted! SUCCESS!");
+			clustersPub_.publish(knownObjects_[idx].second);
+			time_t tfound = time(0);
+			ROS_INFO("Took %f seconds to find target", totalPlanningTime + difftime(tfound,last_tstart));
+			breakpoint();
+			//ros::shutdown();
+		}
+	}
+
 	//Find possible moves
 	vector<Move> possible_moves;
-	findPossibleMoves(other_cloud, movable_clusters, movable_idx, possible_moves);
+	findPossibleMoves(octree, movable_clusters, movable_idx, possible_moves);
 	if (horizon == MAX_HORIZON)
 		ROS_INFO("Horizon %d: Found %zu possible moves", horizon, possible_moves.size());
 
@@ -1654,7 +1950,8 @@ void Planner::random_plan(int horizon,
 		//Simulate move & find resulting config
 		pcl::PointCloud<PointT>::Ptr config_cloud(new pcl::PointCloud<PointT>);
 		pcl::PointCloud<PointT>::Ptr new_config_cloud(new pcl::PointCloud<PointT>);
-		fromROSMsg(other_cloud, *config_cloud);
+		//fromROSMsg(other_cloud, *config_cloud);
+		fromROSMsg(concatClouds(config), *config_cloud);
 		ROS_DEBUG("Publishing current simulated config cloud on topic current_simulated_config");
 		pubCloud("current_simulated_config", config_cloud, fixed_frame_);
 		vector<sensor_msgs::PointCloud2> new_config;
@@ -1665,20 +1962,24 @@ void Planner::random_plan(int horizon,
 
 		bool in_contact = false;
 		for (unsigned int m = 0; m < new_config.size(); m++) {
-			if (m != this_move.cluster_idx && incontact(new_config[m], new_config[this_move.cluster_idx], 0.03, 100, 2000)) {
-				ROS_INFO("The moved cloud touches some other object. reject this move.");
-				in_contact = true;
-				break;
-			}
+			if (m != this_move.cluster_idx)
+				if (incontact(new_config[m], new_config[this_move.cluster_idx], 0.02, 150, 2000)) {
+					ROS_DEBUG("The moved cloud touches some other object. reject this move.");
+					in_contact = true;
+					//move_in_collision++;
+					break;
+				}
 		}
+
+		//breakpoint();
 		if (in_contact)	continue;
 
 		vector<Move> action_sequence = action_sequence_so_far;
 		action_sequence.push_back(this_move);
 		if (horizon > 1) {
 			//Plan recursively
-			//TODO: Disallow consecutive moves of the same object
-			random_plan(horizon-1, new_config, concatClouds(new_config), action_sequence);
+			//TODO: Send updated octree
+			random_plan(horizon-1, new_config, octree, concatClouds(new_config), action_sequence, total_percentage_revealed_so_far);
 		}
 
 		best_action_sequence = action_sequence;
@@ -1689,7 +1990,7 @@ void Planner::random_plan(int horizon,
 	//best_next_action_sequence.insert(best_next_action_sequence.begin(), best_action);
 	ROS_DEBUG("Found the best next action sequence for horizon %d of length %zu", horizon, action_sequence_so_far.size());
 }
-*/
+
 
 void Planner::execute_plan()
 {
@@ -1700,6 +2001,7 @@ void Planner::execute_plan()
 		execute_call.request.object_to_move.push_back(action_sequence_[i].objectToMove);
 		execute_call.request.source_pose.push_back(tfPoseToGeometryPose(action_sequence_[i].sourcePose));
 		execute_call.request.dest_pose.push_back(tfPoseToGeometryPose(action_sequence_[i].destPose));
+		execute_call.request.push.push_back(action_sequence_[i].push);
 	}
 	execute_call.request.table_height = tableHeight_;
 
@@ -1719,6 +2021,7 @@ void Planner::execute_plan()
 	//return true;
 }
 
+
 void Planner::getClusterBoundingBox(const sensor_msgs::PointCloud2 &cluster,
 		geometry_msgs::PoseStamped &pose_stamped,
 		geometry_msgs::Vector3 &dimensions) {
@@ -1736,7 +2039,235 @@ void Planner::getClusterBoundingBox(const sensor_msgs::PointCloud2 &cluster,
 	}
 }
 
+/*
+void Planner::simulate_plan_execution()
+{
+	vector<sensor_msgs::PointCloud2> current_config = clustersDetected_;
+	vector<sensor_msgs::PointCloud2> new_config;
 
+	geometry_msgs::PoseStamped source_pose, dest_pose;
+	source_pose.header.frame_id = "base_link";
+	source_pose.header.stamp = ros::Time::now();
+	dest_pose.header.frame_id = "base_link";
+	dest_pose.header.stamp = ros::Time::now();
+
+	bool action_success = true;
+	vector<octomap::point3d> now_free;
+	for (size_t i = 0; i < action_sequence_.size(); i++)
+	{
+		ROS_INFO("Executing move %zu in simulation", i);
+		source_pose.pose = tfPoseToGeometryPose(action_sequence_[i].sourcePose);
+		dest_pose.pose = tfPoseToGeometryPose(action_sequence_[i].destPose);
+		source_pose_pub_.publish(source_pose);
+		dest_pose_pub_.publish(dest_pose);
+		//breakpoint();
+
+		//Executing plan in simulation
+		simulateMove(current_config, action_sequence_[i], new_config);
+		pcl::PointCloud<PointT>::Ptr new_config_cloud(new pcl::PointCloud<PointT>);
+		fromROSMsg(concatClouds(new_config), *new_config_cloud);
+		//ROS_DEBUG("Publishing new simulated config on topic new_simulated_config");
+		pubCloud("new_simulated_config", new_config_cloud, fixed_frame_);
+		ROS_INFO("Published new config on new_simulated_config topic");
+
+		ROS_INFO("Displaying old octree before updating it");
+		breakpoint();
+		display_octree(octree_);
+		breakpoint();
+
+
+
+		//Update free & occupied nodes
+		ROS_INFO("Updating octree now");
+		if (action_success) {
+			pcl::PointCloud<PointT> new_moved_object, old_moved_object;
+			fromROSMsg(new_config[action_sequence_[i].cluster_idx], new_moved_object);
+			fromROSMsg(current_config[action_sequence_[i].cluster_idx], old_moved_object);
+			//updateHiddenVoxels(tf::Vector3(sensor_origin.x(), sensor_origin.y(), sensor_origin.z()), octree_,
+				//	current_config[action_sequence_[i].cluster_idx], tableHeight_, false);
+			//updateHiddenVoxels(tf::Vector3(sensor_origin.x(), sensor_origin.y(), sensor_origin.z()), octree_,
+				//				new_config[action_sequence_[i].cluster_idx], tableHeight_, true);
+
+			for (size_t p = 0; p < new_moved_object.points.size(); p++) {
+				octomap::point3d new_coord(new_moved_object.points[p].x, new_moved_object.points[p].y, new_moved_object.points[p].z);
+				octomap::OcTreeKey new_key;
+				octree_->genKey(new_coord, new_key);
+				octree_->updateNode(new_key, true, true);
+			}
+			octree_->getFreespace(freeVoxels_);
+			ROS_INFO("Free voxels before update: %zu", freeVoxels_.size());
+
+			for (size_t p = 0; p < old_moved_object.points.size(); p++) {
+				octomap::point3d old_coord(old_moved_object.points[p].x, old_moved_object.points[p].y, old_moved_object.points[p].z);
+				octomap::OcTreeKey old_key;
+				octree_->genKey(old_coord, old_key);
+				octomap::OcTreeNode* now_free_node = octree_->updateNode(old_key, false);
+				now_free_node->setValue(10.0f);
+				//ROS_INFO("Occupancy of now free node = %f, value = %f", now_free_node->getOccupancy(), now_free_node->getValue());
+				freeVoxels_.push_back(std::make_pair(old_coord, octree_->getResolution()));
+				//octomap::OcTreeNode* now_free_node = octree_->search(old_key);
+				//octree_->integrateMiss(now_free_node);
+			}
+
+			ROS_INFO("Free voxels after update: %zu", freeVoxels_.size());
+		}
+		current_config = new_config;
+		new_config.clear();
+		//breakpoint();
+	}
+	//octree_->updateInnerOccupancy();
+	//ROS_INFO("Displaying old octree after updating it");
+	//breakpoint();
+	//display_octree(octree_);
+	//breakpoint();
+
+	ROS_INFO("Sanity check: Free voxels after update: %zu", freeVoxels_.size());
+	//octree_->getOccupied(occupiedVoxels_);
+
+
+	sensor_msgs::PointCloud2 newObjectCloud2 = concatClouds(current_config);
+	currentConfigPCL_ = newObjectCloud2;
+	newObjectCloud2.header.frame_id = fixed_frame_;
+	//Euclidean segmentation
+	cluster(newObjectCloud2, 0.02, 50, 10000, clustersDetected_);
+
+	pcl::PointCloud<PointT>::Ptr shelf_cloud(new pcl::PointCloud<PointT>);
+	fromROSMsg(newObjectCloud2, *shelf_cloud);
+	pubCloud("current_simulated_config", shelf_cloud, fixed_frame_);
+	ROS_INFO("Published current config on current_simulated_config topic");
+	octomap::Pointcloud octomapCloud;
+	octomap::pointcloudPCLToOctomap (*shelf_cloud, octomapCloud);
+	octomap::point3d octo_bbmin(BB_MIN.x(), BB_MIN.y(), BB_MIN.z()-0.01), octo_bbmax(BB_MAX.x(), BB_MAX.y(), BB_MAX.z());
+
+	octomap::OcTree* octree = new octomap::OcTree(0.01);
+	ROS_INFO("Size of octree_ = %zu", octree_->size());
+	if (octree_->size() == 1) {
+		ROS_INFO("Octree size is 1");
+		octree_->insertScan(octomapCloud, octomapCameraOrigin_);
+		updateHiddenVoxels(tf::Vector3(octomapCameraOrigin_.x(), octomapCameraOrigin_.y(), octomapCameraOrigin_.z()), octree_, newObjectCloud2, tableHeight_, true);
+		updateFreeVoxels(octree_);
+		ROS_INFO("Displaying octree");
+		display_octree(octree_);
+		breakpoint();
+	} else {
+		//octomap::OcTree* octree = new octomap::OcTree(0.01);
+		octree->setBBXMin(octo_bbmin);
+		octree->setBBXMax(octo_bbmax);
+		octree->bbxSet();
+		octree->useBBXLimit(true);
+		//octree->enableChangeDetection(true);
+
+		ROS_INFO("WTF:Displaying new octree.");
+		display_octree(octree);
+		breakpoint();
+
+		ROS_INFO("Size of octree = %zu", octree->size());
+		ROS_INFO("Sanity check: Free voxels after update: %zu", freeVoxels_.size());
+		int wtf = 0, cool = 0, updated_nodes = 0;
+
+		unsigned int n_x_voxels = (octree->getBBXMax().x() - octree->getBBXMin().x())/octree->getResolution();
+		unsigned int n_y_voxels = (octree->getBBXMax().y() - octree->getBBXMin().y())/octree->getResolution();
+		unsigned int n_z_voxels = (octree->getBBXMax().z() - octree->getBBXMin().z())/octree->getResolution();
+
+		ROS_INFO("num voxels = %u", n_x_voxels*n_y_voxels*n_z_voxels);
+		for (size_t i = 0; i < n_x_voxels; i++) {
+			for (size_t j = 0; j < n_y_voxels; j++)
+				for (size_t k = 0; k < n_z_voxels; k++) {
+					//Find voxel center
+					octomap::point3d center(octree->getBBXMin().x()+(i+1)*octree->getResolution(),
+							octree->getBBXMin().y()+(j+1)*octree->getResolution(),
+							octree->getBBXMin().z()+(k+1)*octree->getResolution());
+					octomap::OcTreeKey key;
+
+					// this can happen when we have an empty octree, which would of course not cover the object, so return false
+					if (!octree->genKey(center, key)) {
+						ROS_ERROR("Octree is empty!");
+						return;
+					}
+
+					octomap::OcTreeNode *node = octree->search(key);
+					if ((node == NULL) || (!octree->isNodeOccupied(node))) {
+						//This coordinate should be occupied
+						updated_nodes++;
+						octree->updateNode(key, true);
+						//freeVoxels.push_back(std::make_pair(center, octree->getResolution()));
+					}
+				}
+		}
+		ROS_INFO("updated = %d, wtf = %d, cool = %d", updated_nodes, wtf, cool);
+		ROS_INFO("Size of octree = %zu", octree->size());
+		std::list<octomap::OcTreeVolume> fv;
+		octree->getFreespace(fv);
+		ROS_INFO("Num free voxels = %zu", fv.size());
+		ROS_INFO("WTF:Displaying new octree.");
+		display_octree(octree);
+		breakpoint();
+
+		for (std::list<octomap::OcTreeVolume>::iterator it = freeVoxels_.begin(); it != freeVoxels_.end(); ++it) {
+			octomap::OcTreeKey key;
+			ROS_INFO("%d",octree->genKey(it->first, key));
+			octomap::OcTreeNode *node = octree->search(it->first);
+			if (!node) {
+				octomap::OcTreeNode* temp = octree->updateNode(key, false);
+				updated_nodes++;
+				if (temp->getOccupancy() > 0.4)
+					wtf++;
+				else cool++;
+			}
+		}
+		ROS_INFO("updated= %d, wtf = %d, cool = %d", updated_nodes, wtf, cool);
+
+		ROS_INFO("Displaying new octree after updating free voxels only.");
+		breakpoint();
+		display_octree(octree_);
+		breakpoint();
+
+		ROS_INFO("Now updating occupied voxels");
+
+		for (size_t i = 0; i < n_x_voxels; i++) {
+			for (size_t j = 0; j < n_y_voxels; j++)
+				for (size_t k = 0; k < n_z_voxels; k++) {
+					//Find voxel center
+					octomap::point3d center(octree_->getBBXMin().x()+(i+1)*octree_->getResolution(),
+							octree_->getBBXMin().y()+(j+1)*octree_->getResolution(),
+							octree_->getBBXMin().z()+(k+1)*octree_->getResolution());
+					octomap::OcTreeKey key;
+
+					// this can happen when we have an empty octree, which would of course not cover the object, so return false
+					if (!octree_->genKey(center, key)) {
+						ROS_ERROR("Octree is empty!");
+						return;
+					}
+
+					octomap::OcTreeNode *node = octree_->search(key);
+					if (!node) {
+						//This coordinate should be occupied
+						octree_->updateNode(key, true);
+						//freeVoxels.push_back(std::make_pair(center, octree->getResolution()));
+					}
+				}
+		}
+
+	//	octree->insertScan(octomapCloud, octomapCameraOrigin_);
+	//	updateHiddenVoxels(tf::Vector3(octomapCameraOrigin_.x(), octomapCameraOrigin_.y(), octomapCameraOrigin_.z()), octree, newObjectCloud2, tableHeight_, true);
+
+		ROS_INFO("Displaying new octree after updating occupied voxels.");
+		breakpoint();
+		display_octree(octree_);
+		breakpoint();
+
+		//updateFreeVoxels(octree);
+
+		octree_ = octree;
+		ROS_INFO("Displaying current octree");
+		breakpoint();
+		display_octree(octree_);
+		breakpoint();
+	}
+
+	//call_plan(newObjectCloud2);
+}
+*/
 
 
 int main (int argc, char** argv)
@@ -1745,6 +2276,19 @@ int main (int argc, char** argv)
 		ROS_ERROR("Insufficient number of arguments. Give horizon length as argument.");
 		return -1;
 	}
+
+	/*
+	char* h, *bb_max;
+	for (int i = 1; i < argc; i++) {
+		if (i + 1 != argc) {// Check that we haven't finished parsing already
+			if (string(argv[i]) == "-horizon")
+				bb_min = argv[i + 1];
+			else if (string(argv[i]) == "-size")
+				bb_max = argv[i + 1];
+		}
+	}
+	*/
+
 	ros::init(argc, argv, "planner");
 	ros::NodeHandle n;
 	//octomap::OcTree tree(0.05);
@@ -1901,137 +2445,4 @@ bool Planner::checkHiddenOrVisible(sensor_msgs::PointCloud2 object_cloud2,
 	}
     return true;
 }
-
-void Planner::simulate_plan_execution()
-{
-	vector<sensor_msgs::PointCloud2> current_config = clustersDetected_;
-	vector<sensor_msgs::PointCloud2> new_config;
-
-	geometry_msgs::PoseStamped source_pose, dest_pose;
-	source_pose.header.frame_id = "base_link";
-	source_pose.header.stamp = ros::Time::now();
-	dest_pose.header.frame_id = "base_link";
-	dest_pose.header.stamp = ros::Time::now();
-
-	bool action_success = true;
-	for (size_t i = 0; i < action_sequence_.size(); i++)
-	{
-		ROS_INFO("Executing move %zu in simulation", i);
-		source_pose.pose = tfPoseToGeometryPose(action_sequence_[i].sourcePose);
-		dest_pose.pose = tfPoseToGeometryPose(action_sequence_[i].destPose);
-		source_pose_pub_.publish(source_pose);
-		dest_pose_pub_.publish(dest_pose);
-		//breakpoint();
-
-		//Executing plan in simulation
-		simulateMove(current_config, action_sequence_[i], new_config);
-		pcl::PointCloud<PointT>::Ptr new_config_cloud(new pcl::PointCloud<PointT>);
-		fromROSMsg(concatClouds(new_config), *new_config_cloud);
-		//ROS_DEBUG("Publishing new simulated config on topic new_simulated_config");
-		pubCloud("new_simulated_config", new_config_cloud, fixed_frame_);
-		ROS_INFO("Published new config on new_simulated_config topic");
-
-		ROS_INFO("Displaying old octree before updating it");
-		breakpoint();
-		display_octree(octree_);
-		breakpoint();
-
-		//Update free & occupied nodes
-		ROS_INFO("Updating octree now");
-		if (action_success) {
-			pcl::PointCloud<PointT> new_moved_object, old_moved_object;
-			fromROSMsg(new_config[action_sequence_[i].cluster_idx], new_moved_object);
-			fromROSMsg(current_config[action_sequence_[i].cluster_idx], old_moved_object);
-			//updateHiddenVoxels(tf::Vector3(sensor_origin.x(), sensor_origin.y(), sensor_origin.z()), octree_,
-				//	current_config[action_sequence_[i].cluster_idx], tableHeight_, false);
-			//updateHiddenVoxels(tf::Vector3(sensor_origin.x(), sensor_origin.y(), sensor_origin.z()), octree_,
-				//				new_config[action_sequence_[i].cluster_idx], tableHeight_, true);
-
-			for (size_t p = 0; p < new_moved_object.points.size(); p++) {
-				octomap::point3d new_coord(new_moved_object.points[p].x, new_moved_object.points[p].y, new_moved_object.points[p].z);
-				octomap::point3d old_coord(old_moved_object.points[p].x, old_moved_object.points[p].y, old_moved_object.points[p].z);
-				octomap::OcTreeKey new_key, old_key;
-				octree_->genKey(new_coord, new_key);
-				octree_->genKey(old_coord, old_key);
-				octree_->updateNode(new_key, true, true);
-				octree_->updateNode(old_key, false, true);
-				//octomap::OcTreeNode* now_free_node = octree_->search(old_key);
-				//octree_->integrateMiss(now_free_node);
-			}
-		}
-		current_config = new_config;
-		new_config.clear();
-		//breakpoint();
-	}
-	//octree_->updateInnerOccupancy();
-	ROS_INFO("Displaying old octree after updating it");
-	breakpoint();
-	display_octree(octree_);
-	breakpoint();
-
-	octree_->getFreespace(freeVoxels_);
-	//octree_->getOccupied(occupiedVoxels_);
-
-	sensor_msgs::PointCloud2 newObjectCloud2 = concatClouds(current_config);
-	currentConfigPCL_ = newObjectCloud2;
-	newObjectCloud2.header.frame_id = fixed_frame_;
-	//Euclidean segmentation
-	cluster(newObjectCloud2, 0.02, 50, 10000, clustersDetected_);
-
-	pcl::PointCloud<PointT>::Ptr shelf_cloud(new pcl::PointCloud<PointT>);
-	fromROSMsg(newObjectCloud2, *shelf_cloud);
-	pubCloud("current_simulated_config", shelf_cloud, fixed_frame_);
-	ROS_INFO("Published current config on current_simulated_config topic");
-	octomap::Pointcloud octomapCloud;
-	octomap::pointcloudPCLToOctomap (*shelf_cloud, octomapCloud);
-	octomap::point3d octo_bbmin(BB_MIN.x(), BB_MIN.y(), BB_MIN.z()-0.01), octo_bbmax(BB_MAX.x(), BB_MAX.y(), BB_MAX.z());
-
-	ROS_INFO("Size of octree = %zu", octree_->size());
-	if (octree_->size() == 1) {
-		ROS_INFO("Octree size is 1");
-		octree_->insertScan(octomapCloud, octomapCameraOrigin_);
-		updateHiddenVoxels(tf::Vector3(octomapCameraOrigin_.x(), octomapCameraOrigin_.y(), octomapCameraOrigin_.z()), octree_, newObjectCloud2, tableHeight_, true);
-		updateFreeVoxels(octree_);
-		ROS_INFO("Displaying octree");
-		display_octree(octree_);
-		breakpoint();
-	} else {
-		octomap::OcTree* octree = new octomap::OcTree(0.01);
-		octree->setBBXMin(octo_bbmin);
-		octree->setBBXMax(octo_bbmax);
-		octree->bbxSet();
-		octree->useBBXLimit(true);
-		//octree->enableChangeDetection(true);
-
-		octree->insertScan(octomapCloud, octomapCameraOrigin_);
-		updateHiddenVoxels(tf::Vector3(octomapCameraOrigin_.x(), octomapCameraOrigin_.y(), octomapCameraOrigin_.z()), octree, newObjectCloud2, tableHeight_, true);
-
-		ROS_INFO("Displaying new octree before updating it");
-		breakpoint();
-		display_octree(octree);
-		breakpoint();
-
-		for (std::list<octomap::OcTreeVolume>::iterator it = freeVoxels_.begin(); it != freeVoxels_.end(); ++it) {
-			octomap::OcTreeKey key;
-			octree->genKey(it->first, key);
-			octree->updateNode(key, false);
-		}
-
-		updateFreeVoxels(octree);
-
-		ROS_INFO("Displaying new octree after update");
-		breakpoint();
-		display_octree(octree);
-		breakpoint();
-
-		octree_ = octree;
-		ROS_INFO("Displaying current octree");
-		breakpoint();
-		display_octree(octree_);
-		breakpoint();
-	}
-
-	call_plan(newObjectCloud2);
-}
-
  */

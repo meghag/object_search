@@ -51,6 +51,7 @@ rosbuild_add_executable(move_right_arm src/move_right_arm.cpp)
 rosbuild_add_executable(move_left_arm src/move_left_arm.cpp)
 
 rosbuild_add_executable(move_head_manual src/move_head_manual.cpp)
+rosbuild_add_executable(open_gripper_manual src/open_gripper_manual.cpp)
 
 #rosbuild_add_executable(euclidean_seg src/euclidean_segmentation.cpp)
 
@@ -58,8 +59,10 @@ rosbuild_add_executable(move_head_manual src/move_head_manual.cpp)
 #target_link_libraries(pointcloud_to_hull gpcl octomap octomath)
 
 rosbuild_add_executable(planner src/planner.cpp src/TableTopObject.cpp)
-target_link_libraries(planner gpcl octomap octomath pcd_utils)
+target_link_libraries(planner ${PROJECT_NAME} gpcl octomap octomath pcd_utils)
 
+rosbuild_add_executable(random_planner src/random_planner.cpp src/TableTopObject.cpp)
+target_link_libraries(random_planner gpcl octomap octomath pcd_utils)
 
-##rosbuild_add_executable(manipulator src/manipulator.cpp)
-##target_link_libraries(manipulator ${PROJECT_NAME} gpcl)
+rosbuild_add_executable(manipulator src/manipulator.cpp)
+target_link_libraries(manipulator ${PROJECT_NAME} gpcl pcd_utils)

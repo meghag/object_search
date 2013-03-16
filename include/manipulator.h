@@ -30,15 +30,16 @@
 
 //#include <arm_navigation_msgs/CollisionObject.h>
 //#include <tabletop_collision_map_processing/TabletopCollisionMapProcessing.h>
-#include "robothead.h"
+//#include "robothead.h"
 #include "gripper.h"
 //#include "move_arm.h"
 #include "set_marker.h"
+#include "pcd_utils.h"
 
 using namespace std;
 
-typedef actionlib::SimpleActionClient<pr2_controllers_msgs::Pr2GripperCommandAction> GripperClient;
-typedef actionlib::SimpleActionClient<pr2_controllers_msgs::PointHeadAction> PointHeadClient;
+//typedef actionlib::SimpleActionClient<pr2_controllers_msgs::Pr2GripperCommandAction> GripperClient;
+//typedef actionlib::SimpleActionClient<pr2_controllers_msgs::PointHeadAction> PointHeadClient;
 //typedef pcl::PointXYZRGB PointT;
 
 static const std::string SET_PLANNING_SCENE_DIFF_NAME = "/environment_server/set_planning_scene_diff";
@@ -54,12 +55,15 @@ private:
 	//Functions
 	bool callback(tum_os::Execute_Plan::Request &req, tum_os::Execute_Plan::Response &res);
 	bool pick_n_place(size_t idx);
+	bool push_object(size_t idx);
 
 	void resetCollisionModels();
 
+	/*
 	void getClusterBoundingBox(const sensor_msgs::PointCloud2 &cluster,
 			geometry_msgs::PoseStamped &pose_stamped,
 			geometry_msgs::Vector3 &dimensions);
+	*/
 
 	void processCollisionGeometryForBoundingBox(const object_manipulation_msgs::ClusterBoundingBox &box,
 			std::string &collision_name);
@@ -68,13 +72,17 @@ private:
 			int operation, double penetration,
 			arm_navigation_msgs::CollisionOperation& cop);
 
-	void add_collision_object(arm_navigation_msgs::CollisionObject& cob, int operation);
+	void add_collision_object(arm_navigation_msgs::CollisionObject& cob, int operation, int action);
 
 	void add_attached_object(arm_navigation_msgs::AttachedCollisionObject& acob, int operation);
 
-	int move_arm(geometry_msgs::Point go_to, int cluster_id, int cluster_op, bool attach, int plan_id, int action);
+	int move_arm_pick(geometry_msgs::Point go_to, int cluster_id, int cluster_op, int plan_id);
+
+	int move_arm_push(geometry_msgs::Point go_to, int cluster_id, int collision_object_operation, int plan_id);
 
 	vector<geometry_msgs::Point> waypoints(size_t idx);
+
+	vector<geometry_msgs::Point> push_waypoints(size_t idx);
 
 	void breakpoint();
 
@@ -91,12 +99,12 @@ private:
 
 	ros::ServiceClient get_planning_scene_client_;
 	ros::ServiceClient get_collision_objects_client_;
-	ros::ServiceClient bbx_client_;
+	//ros::ServiceClient bbx_client_;
 	//ros::Publisher collision_map_pub_;
 	//ros::Publisher target_object_pub_;
 	ros::Publisher collision_object_pub_;
 
-	RobotHead head_;
+	//RobotHead head_;
 	Gripper gripper_;
 
 	//bool manipulate_service_called_;
@@ -123,6 +131,7 @@ private:
 	vector<sensor_msgs::PointCloud2> object_to_move_;
 	vector<geometry_msgs::Pose> source_pose_;
 	vector<geometry_msgs::Pose> dest_pose_;
+	vector<bool> push;
 	sensor_msgs::PointCloud2 target_cloud2_;
 	double table_height_;
 };

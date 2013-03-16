@@ -113,8 +113,8 @@ geometry_msgs::Point find_centroid(pcl::PointCloud<PointT> pcd)
 } //End function find_centroid
 
 std::vector<geometry_msgs::Point> find_extents(pcl::PointCloud<PointT> pcd)
-		  {
-	ROS_INFO("Inside find_extents");
+{
+	//ROS_INFO("Inside find_extents");
 	vector<double> vecx, vecy, vecz;
 
 	for (std::vector<PointT, Eigen::aligned_allocator<PointT> >::iterator it = pcd.points.begin();
@@ -166,7 +166,7 @@ std::vector<geometry_msgs::Point> find_extents(pcl::PointCloud<PointT> pcd)
 		extent.push_back(vertices[i]);
 
 	return extent;
-		  } //End function find_extents
+} //End function find_extents
 
 char find_color(pcl::PointCloud<PointXYZRGB> pcd)
 {

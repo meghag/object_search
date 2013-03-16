@@ -46,6 +46,7 @@ extern "C" {
 
 #include "pcd_utils.h"
 #include "TableTopObject.h"
+#include "set_marker.h"
 //#include <tum_os/Clusters.h>
 #include <tum_os/PlanService.h>
 #include <tum_os/Execute_Plan.h>
@@ -101,6 +102,7 @@ private:
 	//void planRequestCallback(const tum_os::PlanRequest::ConstPtr& plan_request);
 	bool planRequestCallback(tum_os::PlanService::Request &plan_request, tum_os::PlanService::Response &plan_response);
 	void call_plan(sensor_msgs::PointCloud2 objectCloud2);
+	void manual_plan_execution(vector<sensor_msgs::PointCloud2> current_config);
 	void simulate_plan_execution();
 	void pub_belief(const std::string &topic_name,const std::vector<tf::Pose> poses);
 	void pubCloud(const std::string &topic_name, const pcl::PointCloud<PointT>::Ptr &cloud, std::string frame_id);
@@ -110,10 +112,13 @@ private:
 	TableTopObject createTTO(sensor_msgs::PointCloud2& cloud2);
 	void findGridLocations(vector<sensor_msgs::PointCloud2> config);
 	bool inFront(pcl::PointCloud<PointT> cloud, int cluster_idx);
+	bool inFrontAlt(unsigned int cluster_idx);
 	void make_grid(vector<sensor_msgs::PointCloud2> config);
 	void display_grid();
 	void display_bbx();
 	void display_octree(octomap::OcTree* octree);
+	void generateOctree(vector<sensor_msgs::PointCloud2> known_objects, vector<bool> moved,
+			octomap::OcTree* octree);
 
 	void projectToPlanePerspective(const tf::Vector3 sensorOrigin,
 			const double tableHeight,
@@ -134,7 +139,8 @@ private:
 					tf::Vector3 sampling_bb_max,
 					vector<tf::Pose>& object_posterior_belief,
 					bool check_hidden,
-					bool check_visible);
+					bool check_visible,
+					bool push);
 
 	bool checkHiddenOrVisible(sensor_msgs::PointCloud2 object_cloud2,
 			octomap::OcTree* octree,
@@ -163,15 +169,20 @@ private:
 
 	void plan(int horizon,
 			vector<sensor_msgs::PointCloud2> config,
+			octomap::OcTree* octree,
+			vector<bool> beenMoved,
+			vector<Move>& best_next_action_sequence,
+			double& total_percentage_revealed_so_far,
+			vector<unsigned int>& moved_so_far);
+//sensor_msgs::PointCloud2 other_cloud,
+
+	void random_plan(int horizon,
+			vector<sensor_msgs::PointCloud2> config,
+			octomap::OcTree* octree,
 			sensor_msgs::PointCloud2 other_cloud,
 			vector<Move>& best_next_action_sequence,
 			double& total_percentage_revealed_so_far);
-/*
-	void random_plan(int horizon,
-			vector<sensor_msgs::PointCloud2> config,
-			sensor_msgs::PointCloud2 other_cloud,
-			vector<Move>& action_sequence_so_far);
-*/
+
 	void simulateMove(vector<sensor_msgs::PointCloud2> config,
 			Move move, vector<sensor_msgs::PointCloud2>& new_config);
 
@@ -196,13 +207,20 @@ private:
 	ros::ServiceClient newpcdClient_;
 	ros::ServiceClient bbx_client_;
 	ros::Publisher octreePub_;
+	ros::Publisher visibleObjectsPub_;
 	
 	//Variables
 	float target_x, target_y, target_z;
 	sensor_msgs::PointCloud2 targetCloud2_;
+	tf::Vector3 targetDimensions_;
 	sensor_msgs::PointCloud2 objectCloud2_;
 	sensor_msgs::PointCloud2 planarCloud2_;
 	std::vector<sensor_msgs::PointCloud2> clustersDetected_;
+	std::map<unsigned int, std::pair<tf::Vector3, sensor_msgs::PointCloud2> > knownObjects_;
+	vector<tf::Vector3> knownObjectDimensions_;
+	std::map<unsigned int, bool> beenMoved_;
+	unsigned int numKnownObjects_;
+	std::map<unsigned int, unsigned int> cluster_to_known_idx_map_;
 	double tableHeight_;
 	tf::TransformListener listener;
 	//tf::Stamped<tf::Pose> base_to_camera_;
@@ -214,6 +232,9 @@ private:
 	float grid_resolution_;
 	vector<vector<int> > grid_locations_;
 	sensor_msgs::PointCloud2 known_occupied_pcd_;
+	int planningIteration;
+	double totalPlanningTime;
+	time_t last_tstart;
 
 	octomap::OcTree* octree_;
 	std::list<octomap::OcTreeVolume> freeVoxels_;

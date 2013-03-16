@@ -164,7 +164,7 @@ private:
       // Create the filtering object
       pcl::VoxelGrid<sensor_msgs::PointCloud2> sor;
       sor.setInputCloud (objectCloud2);
-      sor.setLeafSize (0.005f, 0.005f, 0.005f);
+      sor.setLeafSize (0.01f, 0.01f, 0.01f);
       sor.filter (*filteredObjectCloud2);
       std::cerr << "PointCloud after filtering: " << filteredObjectCloud2->width * filteredObjectCloud2->height
     		  << " data points (" << pcl::getFieldsList (*filteredObjectCloud2) << ")." << std::endl;
