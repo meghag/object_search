@@ -59,7 +59,7 @@ bool silent = true;
 
 #include <stdlib.h>
 
-void start()
+void start_simulator()
 {
     int i = system("rosservice call gazebo/unpause_physics");
     std::cout << "system " << i << std::endl;
@@ -178,7 +178,6 @@ bool compare_push(Push i,Push j)
         return (i.num_removed > j.num_removed);
 }
 
-
 double planning_precision = 0.01;
 
 void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
@@ -240,7 +239,7 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
     //! num grasps per cluster and arm
     // 0.02 sec for 12.5k
-    for (int k =0; k < 12500; k++)
+    for (int k =0; k < 75000; k++)
     {
         tf::Pose act = VanDerCorput::vdc_pose_bound(cluster_min,cluster_max,k);
         //act.setRotation(tf::Quaternion((k % 1 == 0) ? 0.65 : -.65,0,0,.65));
@@ -555,7 +554,16 @@ struct manipulation_plan
     std::vector<int> removed_objects;
     std::vector<int> primitive;
     std::vector<double> percentage;
+    double expected_time;
+    bool executable;
 };
+
+
+bool compare_manipulation_plan_expected(const manipulation_plan &i,const manipulation_plan &j)
+{
+    return (i.expected_time < j.expected_time);
+}
+
 
 //void fill_plan(plan abstract_plan, manipulation_plan *manip_plan, std::vector<std::vector<int> &indices, int depth = 0)
 //{
@@ -565,16 +573,37 @@ struct manipulation_plan
 void print_push(const Push& a)
 {
     std::cout << "Push " << " removes " << a.num_removed << " arm " << a.arm << " clus " << a.cluster_index << " vec " << a.object_motion.x() << " "
-              << a.object_motion.y() << " " << a.object_motion.z() << " " << "len" << a.object_motion.length();// << std::endl;
+              << a.object_motion.y() << " " << a.object_motion.z() << " \t" << "len" << a.object_motion.length();// << std::endl;
     std::cout << std::endl;
 }
 
 
 //! check if all objects that were blocking this one were already removed in this abstract plan
-bool still_blocked(int j,std::vector<int> remove_order, std::set<int> blocked)
+bool still_blocked(int j,std::set<int> removed_objects, std::set<int> blocked)
 {
+    //! this will not scale well, sorting the remove_order each time!
+    //std::set<int> remove_order_set(remove_order.begin(), remove_order.end());
+
     std::set<int> result;
-    std::set_difference(blocked.begin(), blocked.end(), remove_order.begin(), remove_order.end(), std::inserter(result,result.begin()));
+    std::set_difference(blocked.begin(), blocked.end(), removed_objects.begin(), removed_objects.end(), std::inserter(result,result.begin()));
+    //std::set_difference(blocked.begin(), blocked.end(), remove_order_set.begin(), remove_order_set.end(), std::inserter(result,result.begin()));
+
+
+    //std::cout << "still blocked remove_order";
+    //for (std::vector<int>::iterator it = remove_order.begin(); it!=remove_order.end(); it++)
+    //std::cout << " " << *it;
+
+    //std::cout << std::endl << "blocked";
+
+    //for (std::set<int>::iterator it = blocked.begin(); it!=blocked.end(); it++)
+    //  std::cout << " " << *it;
+
+    //std::cout << std::endl;
+
+    //std::cout << " result ";
+    //for (std::set<int>::iterator it = result.begin(); it!=result.end(); it++)
+    //std::cout << " " << *it;
+    //std::cout << std::endl;
 
     return (result.size() > 0);
 }
@@ -804,7 +833,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
 
     bool greedy = false;
 
-    greedy = true;
+    //greedy = true;
 
     if (greedy )
     {
@@ -942,6 +971,8 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         //check for each grasp if it is blocked by another object
         for (size_t k = 0; k < pushes.size(); ++k)
         {
+
+            std::cout << "Push " << k << " cluster " << pushes[k].cluster_index <<  " vector " << pushes[k].object_motion.x() << " " << pushes[k].object_motion.y() << " " << pushes[k].object_motion.z() << std::endl;
             pushes_by_cluster[pushes[k].cluster_index].push_back(&pushes[k]);
 
             for (size_t j = 0; j < ct_obj_only.size(); j++)
@@ -989,15 +1020,17 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         }
 
         // plan ahead
-        int horizon = std::min(3,(int)obj_only.size()); // remove fixed horizon
+        int horizon = std::min(2,(int)obj_only.size()); // remove fixed horizon
         std::vector<std::vector<plan> > graph;
-        graph.resize(horizon + 1);
+        graph.resize(horizon);
+
+        std::cout << " HORIZON " << horizon << std::endl;
 
         // start with any object that is not blocked in first step
         for (size_t j = 0; j < ct_obj_only.size(); j++)
         {
             plan act;
-            bool can_be_removed = !still_blocked(j,act.remove_order,blocked[j]);
+            bool can_be_removed = !still_blocked(j,act.removed_objects,blocked[j]);
             act.remove_order.push_back(j);
             act.removed_objects.insert(j);
             if (can_be_removed)
@@ -1010,26 +1043,40 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
             {
                 plan &act = *it;
                 //! debug
-                //std::cout << "Plan ";
-                //for (std::vector<int>::iterator jt= it->remove_order.begin(); jt!=it->remove_order.end(); ++jt)
-                //{
-                  //  std::cout << *jt << " ";
-                //}
-                //std::cout << std::endl;
+                std::cout << "Plan ";
+                for (std::vector<int>::iterator jt= it->remove_order.begin(); jt!=it->remove_order.end(); ++jt)
+                {
+                    std::cout << *jt << " ";
+                }
+                std::cout << std::endl;
                 //! debug
 
                 for (size_t j = 0; j < ct_obj_only.size(); j++)
                 {
                     // if current object is not yet in the plan
+
+                    std::cout << "Testing " << j << std::endl;
+
                     if (act.removed_objects.find(j) == act.removed_objects.end())
                     {
+                        std::cout << "not removed " << j << std::endl;
                         // if object is not blocked
-                        if (!still_blocked(j,act.remove_order,blocked[j]))
+                        if (!still_blocked(j,act.removed_objects,blocked[j]))
                         {
+                            std::cout << "not blocked " << j << std::endl;
                             plan new_plan = act;
                             new_plan.remove_order.push_back(j);
                             new_plan.removed_objects.insert(j);
                             graph[h].push_back(new_plan);
+
+                            std::cout << " new entry                         ";
+
+                            for (std::vector<int>::iterator kt= new_plan.remove_order.begin(); kt!=new_plan.remove_order.end(); ++kt)
+                            {
+                                std::cout << *kt << " ";
+                            }
+                            std::cout << std::endl;
+
                         }
 
                     }
@@ -1037,7 +1084,9 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
             }
         }
 
-        std::cout << "After planning:" << std::endl;
+        std::cout << "After planning: graph size" << graph.size() << std::endl;
+        for (std::vector<std::vector<plan> >::iterator it = graph.begin(); it!= graph.end(); it++)
+            std::cout << " size "  << it->size() << std::endl;
 
         std::vector<manipulation_plan> manip_plans;
 
@@ -1063,7 +1112,10 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
             current_plan.abstract_plan_index = it - graph[horizon-1].begin();
 
             int depth = 0;
-            int max_depth = cap.remove_order.size();
+            int max_depth = cap.remove_order.size() - 1;
+
+            std::cout << "max_depth" << max_depth << std::endl;
+
             std::vector<int> indices;
             indices.resize(cap.removed_objects.size());
             std::fill( indices.begin(), indices.end(), 0);
@@ -1085,8 +1137,14 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                 if (debi > 50)
                     found = true;
 
+                std::cout << "depth " << depth << std::endl;
+                std::cout << " indices[depth]" << indices[depth] << std::endl;
+                std::cout <<" cap.remove_order[depth] " <<  cap.remove_order[depth] << std::endl;
+                std::cout << " pushes_by_cluster.size() " << pushes_by_cluster.size() << std::endl;
+                std::cout << "pushes_by_cluster[cap.remove_order[depth]].size()" << pushes_by_cluster[cap.remove_order[depth]].size() << std::endl;
+
                 // we reached highest primitive in this depth, ->backtracking
-                if (indices[depth] > pushes_by_cluster[cap.remove_order[depth]].size())
+                if (indices[depth] > (int) pushes_by_cluster[cap.remove_order[depth]].size())
                 {
 
                     // reset this depth to zero
@@ -1100,7 +1158,8 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                 else
                 {
 
-                    if (depth==max_depth) {
+                    if (depth==max_depth)
+                    {
                         std::cout << "manip_plan____________________________________";
 
                         manip_plans.push_back(current_plan);
@@ -1153,34 +1212,108 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
 
         }
 
+        double belief_size = object_posterior_belief.size();
+
         //std::vector<manipulation_plan> manip_plans;
         for (std::vector<manipulation_plan>::iterator im = manip_plans.begin(); im != manip_plans.end(); ++im)
+        {
+            std::cout << "Manip Plan Objects: ";
+            size_t k;
+            for (k = 0; k < im->removed_objects.size(); ++k)
             {
-                std::cout << "Manip Plan Objects: ";
-                int k;
-                for (k = 0; k < im->removed_objects.size(); ++k)
-                {
-                    std::cout << " " << im->removed_objects[k];
-                }
-                std::cout << " primitives:";
-                for (k = 0; k < im->removed_objects.size(); ++k)
-                {
-                    std::cout << " " << im->primitive[k];
-                }
-
-                std::cout << " num removed:";
-                int sum = 0;
-                for (k = 0; k < im->removed_objects.size(); ++k)
-                {
-                    sum += pushes_by_cluster[im->removed_objects[k]][im->primitive[k]]->num_removed;
-                    std::cout << " " << pushes_by_cluster[im->removed_objects[k]][im->primitive[k]]->num_removed;
-                }
-
-                std::cout << " SUM " << sum;
-
-
-                std::cout << std::endl;
+                std::cout << " " << im->removed_objects[k];
             }
+            std::cout << " primitives:";
+            for (k = 0; k < im->removed_objects.size(); ++k)
+            {
+                std::cout << " " << im->primitive[k];
+            }
+
+            std::cout << " num removed:";
+            int sum = 0;
+            double expected_time = 0;
+            for (k = 0; k < im->removed_objects.size(); ++k)
+            {
+                double removed = pushes_by_cluster[im->removed_objects[k]][im->primitive[k]]->num_removed;
+                sum += removed;
+                expected_time += ( k + 1 ) * (removed / belief_size);
+                std::cout << " " << removed;
+
+                im->percentage.push_back(removed / belief_size);
+            }
+            double rest = belief_size - sum;
+            //! arbitrary number 100
+            expected_time += ( im->removed_objects.size() + 10 ) * rest;
+
+            im->expected_time = expected_time;
+
+            std::cout << " SUM " << sum << " of " << belief_size << " expected time " << expected_time;
+
+
+            std::cout << std::endl;
+        }
+
+
+        std::sort (manip_plans.begin(), manip_plans.end(), compare_manipulation_plan_expected);
+        for (std::vector<manipulation_plan>::iterator im = manip_plans.begin(); im != manip_plans.end(); ++im)
+        {
+            size_t k;
+            for (k = 0; k < im->removed_objects.size(); ++k)
+            {
+                std::cout << " " << im->removed_objects[k];
+            }
+            std::cout << " Expected time: " << im->expected_time << std::endl;
+        }
+
+        // check if the manip plan is executable by checking for collisions with adjusted cluster positions
+        // and cluster/ cluster collisions
+        for (std::vector<manipulation_plan>::iterator im = manip_plans.begin(); im != manip_plans.end(); ++im)
+        {
+            bool blocked = false;
+            size_t k;
+            std::vector<CollisionTesting*> toPop;
+
+            std::cout << "Plan";
+            for (k = 0; k < im->removed_objects.size(); ++k)
+            {
+                std::cout << " " << im->removed_objects[k];
+            }
+
+            std::cout << " coll ";
+
+            for (k = 0; (k < im->removed_objects.size()) && !blocked; ++k)
+            {
+                size_t cluster_idx = im->removed_objects[k];
+                Push *curr_push = pushes_by_cluster[cluster_idx][im->primitive[k]];
+                ct_obj_only[cluster_idx].push_offset(curr_push->object_motion);
+                toPop.push_back(&ct_obj_only[cluster_idx]);
+
+                // we know already the first primitive is executable
+                if (k > 0)
+                {
+                    for (size_t i = 0; i < ct_obj_only.size(); ++i)
+                    {
+                        if (i != cluster_idx)
+                        {
+                            if ((ct_obj_only[i].inCollision(curr_push->arm, curr_push->from)) ||
+                                    (ct_obj_only[i].inCollision(curr_push->arm, curr_push->to)))
+                                blocked = true;
+                        }
+                    }
+
+                }
+
+                std::cout << (blocked ? "X" : "0");
+                //std::cout << " " << im->removed_objects[k];
+            }
+
+            im->executable = !blocked;
+
+            std::cout << std::endl;
+
+            for (k = 0; k < toPop.size(); ++k)
+                toPop[k]->pop_offset();
+        }
 
         /*
         struct manipulation_plan
@@ -1190,17 +1323,75 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         };
         */
 
-        for (size_t j = 0; j < ct_obj_only.size(); j++)
+        /*for (size_t j = 0; j < ct_obj_only.size(); j++)
         {
             for (size_t k = 0; k < pushes_by_cluster[j].size(); ++k)
             {
                 std::cout << " CLUSTER " << j << " ";
                 print_push(*pushes_by_cluster[j][k]);
             }
+        }*/
+
+        start_simulator();
+
+        bool success = false;
+        for (std::vector<manipulation_plan>::iterator im = manip_plans.begin(); (im != manip_plans.end()) && !success; ++im)
+        {
+            if (im->executable)
+            {
+                size_t cluster_idx = im->removed_objects[0];
+                //Push *curr_push = pushes_by_cluster[cluster_idx][im->primitive[0]];
+
+                //ROS_INFO("PUSHES INDEX %zu", index);
+
+                Push &act_push = *pushes_by_cluster[cluster_idx][im->primitive[0]];;
+                int arm = act_push.arm;
+
+                std::vector<double> result;
+                result.resize(7);
+                std::fill( result.begin(), result.end(), 0 );
+
+                std::vector<double> result_push;
+                result_push.resize(7);
+                std::fill( result_push.begin(), result_push.end(), 0 );
+
+                int err = get_ik(arm, act_push.from, result);
+                int err2 = get_ik(arm, act_push.to , result_push);
+
+                ROS_INFO("ERROR CODES %i %i", err, err2);
+
+                RobotArm::getInstance(arm)->open_gripper(0.01);
+
+                int failure = RobotArm::getInstance(arm)->move_arm(act_push.from);
+                if (failure == 0)
+                {
+
+                    ROS_ERROR("MOVED THE ARM");
+                    RobotArm::getInstance(arm)->move_arm_joint(result_push,5);
+                    RobotArm::getInstance(arm)->open_gripper(0.02);
+                    RobotArm::getInstance(arm)->move_arm_joint(result,2);
+                    //try planning out of last position, if it fails, raise the arm to the max and then pull it back
+                    if (RobotArm::getInstance(arm)->home_arm() != 0)
+                    {
+                        ROS_ERROR("Planning to home failed, trying alternative heuristic approach");
+                        tf::Pose higher = act_push.from;
+                        bool ik_good = true;
+                        while (ik_good)
+                        {
+                            higher.getOrigin() += tf::Vector3(-.00,0,0.01);
+                            ik_good = (get_ik(arm, higher, result) == 1);
+                        }
+                        higher.getOrigin() -= tf::Vector3(-.00,0,0.01);
+                        RobotArm::getInstance(arm)->move_arm_via_ik(higher);
+                    }
+                    RobotArm::getInstance(arm)->open_gripper(0.001);
+                    RobotArm::reset_arms(arm);
+                    success = true;
+                }
+
+
+            }
         }
-
-
-
 
 
     }
@@ -1449,7 +1640,7 @@ int main(int argc,char **argv)
 
     init();
 
-    start();
+    start_simulator();
 
     std::cout << argc << std::endl;
 
@@ -1475,7 +1666,7 @@ int main(int argc,char **argv)
 
     if ((argc>1) && (atoi(argv[1])==0))
     {
-        start();
+        start_simulator();
         RobotArm::reset_arms();
         finish();
     }

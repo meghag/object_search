@@ -392,11 +392,11 @@ void CollisionTesting::push_offset(tf::Vector3 offset)
 {
 
     offset_stack.push_back(planning_scene.robot_state.multi_dof_joint_state.poses[0].position);
-    std::cout << "Previous offset " << planning_scene.robot_state.multi_dof_joint_state.poses[0].position << std::endl;
+    //std::cout << "Previous offset " << planning_scene.robot_state.multi_dof_joint_state.poses[0].position << std::endl;
 
     tf::Vector3 curr;
     tf::pointMsgToTF(planning_scene.robot_state.multi_dof_joint_state.poses[0].position , curr);
-    curr+= offset;
+    curr -= offset;
     tf::pointTFToMsg(curr, planning_scene.robot_state.multi_dof_joint_state.poses[0].position);
 
     updateCollisionModel();
