@@ -221,6 +221,12 @@ bool TableTopObject::checkCollision(tf::Transform ownTransform, tf::Transform ot
 
     geometry_msgs::Transform trans;
 
+    //tf::transformTFToMsg(otherTransform, trans);
+    //std::cout << "other transform :" << trans << std::endl;
+
+    //tf::transformTFToMsg(ownTransform, trans);
+    //std::cout << "own transform :" << trans << std::endl;
+
     //tf::transformTFToMsg(resultingTransform, trans);
     //std::cout << "resulting transform :" << trans << std::endl;
 
@@ -230,13 +236,28 @@ bool TableTopObject::checkCollision(tf::Transform ownTransform, tf::Transform ot
         otherObject.initOcto();
     }
 
+    /*{
+        geometry_msgs::Vector3 msg;
+        tf::vector3TFToMsg(ownTransform.getOrigin(),msg);
+        std::cout << "own vec " << msg << std::endl;
+        tf::vector3TFToMsg(otherTransform.getOrigin(),msg);
+        std::cout << "oth vec " << msg << std::endl;
+
+        tf::vector3TFToMsg(resultingTransform.getOrigin(),msg);
+        std::cout << "result vec " << msg << std::endl;
+
+        std::cout << "octtree sizes " << m_octoMap->octree.size() <<  " and " << otherObject.m_octoMap->octree.size() << std::endl;
+    }*/
+
     for (OcTreeROS::OcTreeType::iterator it = m_octoMap->octree.begin(16),
             end = m_octoMap->octree.end(); it != end; ++it)
     {
 
         tf::Vector3 vec(it.getX(), it.getY(), it.getZ());
 
+        //std::cout << " vec bef" << vec.getX() << " "<< vec.getY() << " "<< vec.getZ() << std::endl;
         vec = resultingTransform * vec;
+        //std::cout << " vec aft" << vec.getX() << " "<< vec.getY() << " "<< vec.getZ() << std::endl;
 
         octomath::Vector3 coord;
 

@@ -322,7 +322,8 @@ bool CollisionTesting::inCollision(int arm, double jointState[])
 
     //ROS_INFO("Publishin collision markers? %s", (publish_markers ? "true" : "false") );
 
-    if ((publish_markers) || (offset_stack.size() > 0))
+    //if ((publish_markers)) || (offset_stack.size() > 0))
+    if (publish_markers)
     {
         visualization_msgs::MarkerArray sum_arr;
 
