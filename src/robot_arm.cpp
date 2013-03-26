@@ -195,7 +195,7 @@ int RobotArm::move_arm(tf::Pose goalPose)
 
     tf::poseTFToMsg(goalPose, desired_pose.pose);
 
-    std::cout << "Move arm goal pose: " << desired_pose << std::endl;
+    //std::cout << "Move arm goal pose: " << desired_pose.pose << std::endl;
 
     desired_pose.absolute_position_tolerance.x = 0.01;
     desired_pose.absolute_position_tolerance.y = 0.01;
@@ -261,8 +261,8 @@ void RobotArm::open_gripper(double amount, double effort)
 
     gripper_client_->sendGoal(open);
     //gripper_client_->waitForResult();
-    if (gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
-        ROS_INFO("The gripper opened!");
-    else
-        ROS_INFO("The gripper failed to open.");
+    //if (gripper_client_->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+        //ROS_INFO("The gripper opened!");
+    //else
+      //  ROS_INFO("The gripper failed to open.");
 }
