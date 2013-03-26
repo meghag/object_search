@@ -2,7 +2,7 @@
   <link name="small_box">
     <inertial>
       <origin xyz="0.0 0.0 0.1" /> 
-      <mass value="10" />
+      <mass value="2" />
       <inertia  ixx="1" ixy="0.0"  ixz="0.0"  iyy="1"  iyz="0.0"  izz="1" />
     </inertial>
     <visual>
@@ -26,7 +26,7 @@
     <max_vel>100000000.0</max_vel>
     <soft_erp>0.01</soft_erp>
     <bounce_threshold>0</bounce_threshold>
-    <mu1>0.01</mu1>
-    <mu2>100000000.0</mu2>
+    <mu1>0.1</mu1>
+    <mu2>0.1</mu2>
   </gazebo>
 </robot>
