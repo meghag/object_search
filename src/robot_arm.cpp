@@ -10,13 +10,13 @@
 #include <kinematics_msgs/GetPositionIK.h>
 #include <kinematics_msgs/PositionIKRequest.h>
 #include <kinematics_msgs/GetPositionFK.h>
-
-
 #include "../include/robot_arm.h"
 
 
 // ugly forward decl. make a class
 int get_ik(const int arm, const tf::Pose targetPose, std::vector<double> &jointValues);
+
+int get_ik(const int arm, const tf::Pose targetPose, std::vector<double> &seed,std::vector<double> &jointValues);
 
 RobotArm *RobotArm::instance[] = {0L,0L};
 
@@ -48,12 +48,19 @@ RobotArm::~RobotArm()
 }
 
 int
-RobotArm::move_arm_via_ik(tf::Pose goalPose)
+RobotArm::move_arm_via_ik(tf::Pose goalPose, double time_to_target)
 {
+
+    pr2_controllers_msgs::JointTrajectoryControllerState arm_state= *(ros::topic::waitForMessage<pr2_controllers_msgs::JointTrajectoryControllerState >(side_ ?  "/l_arm_controller/state" : "/l_arm_controller/state"));
+
+    std::vector<double> seed;
+    for (size_t k = 0; k < 7; k++)
+        seed.push_back(arm_state.actual.positions[k]);
+
     std::vector<double> ik_result;
-    int error_code = get_ik(side_, goalPose, ik_result);
+    int error_code = get_ik(side_, goalPose, seed, ik_result);
     ROS_INFO("ARM_IK ERROR CODE %i", error_code);
-    move_arm_joint(ik_result);
+    move_arm_joint(ik_result, time_to_target);
     return 0;
 }
 
@@ -205,9 +212,19 @@ int RobotArm::move_arm(tf::Pose goalPose)
     desired_pose.absolute_pitch_tolerance = 0.04;
     desired_pose.absolute_yaw_tolerance = 0.04;
 
+    desired_pose.absolute_position_tolerance.x = 0.025;
+    desired_pose.absolute_position_tolerance.y = 0.025;
+    desired_pose.absolute_position_tolerance.z = 0.025;
+
+    desired_pose.absolute_roll_tolerance = 0.1;
+    desired_pose.absolute_pitch_tolerance = 0.1;
+    desired_pose.absolute_yaw_tolerance = 0.1;
+
     arm_navigation_msgs::addGoalConstraintToMoveArmGoal(desired_pose,goalA);
 
     bool finished_within_time = false;
+
+    //goalA.disable_ik = true;
 
     move_arm_client_->sendGoal(goalA);
 

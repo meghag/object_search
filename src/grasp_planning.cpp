@@ -400,8 +400,10 @@ void GraspPlanning::initGrasps()
 
         GraspBoxSet act;
 
-        act.bb_min.push_back(tf::Vector3(0.17,-0.02,0.02));
-        act.bb_max.push_back(tf::Vector3(0.2,0.02,0.1));
+        //act.bb_min.push_back(tf::Vector3(0.17,-0.02,0.02));
+        act.bb_min.push_back(tf::Vector3(0.17,-0.02,0.04));
+        //act.bb_max.push_back(tf::Vector3(0.2,0.02,0.1));
+        act.bb_max.push_back(tf::Vector3(0.2,0.02,0.15));
         act.bb_full.push_back(true);
 
         act.bb_min.push_back(tf::Vector3(0.17,0,-0.02));

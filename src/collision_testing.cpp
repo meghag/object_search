@@ -345,9 +345,9 @@ bool CollisionTesting::inCollision(int arm, double jointState[])
                 ros::Duration(1000),
                 &arm_names[0]);
 
-        color.r = 1;
-        color.g = 1;
-        color.b = 0;
+        //color.r = 1;
+        //color.g = 1;
+        //color.b = 0;
 
         //collision_models->getAllCollisionPointMarkers(*kinematic_state,
         //      sum_arr,

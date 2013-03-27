@@ -32,6 +32,28 @@ void init_kinematics()
 
 }
 
+int get_ik(const int arm, const tf::Pose targetPose, std::vector<double> &seed ,std::vector<double> &jointValues)
+{
+
+    init_kinematics();
+
+    int error_code = 0;
+
+    geometry_msgs::Pose pose;
+    tf::poseTFToMsg(targetPose,pose);
+
+
+    inverse_kinematics[arm]->getPositionIK(pose,
+                                           seed,
+                                           jointValues,
+                                           error_code);
+
+
+    return error_code;
+
+}
+
+
 
 int get_ik(const int arm, const tf::Pose targetPose, std::vector<double> &jointValues)
 {

@@ -241,12 +241,12 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
     //! num grasps per cluster and arm
     // 0.02 sec for 12.5k
-    for (int k =0; k < 25000; k++)
+    for (int k =0; k < 1000; k++)
     {
         tf::Pose act = VanDerCorput::vdc_pose_bound(cluster_min,cluster_max,k);
         //act.setRotation(tf::Quaternion((k % 1 == 0) ? 0.65 : -.65,0,0,.65));
-        //act.setRotation(tf::Quaternion( 0.0445028, 0.57906,0.089325, 0.809154));
         //act.getRotation() = act.getRotation().normalize();
+        //act.setRotation(tf::Quaternion( 0.0445028, 0.57906,0.089325, 0.809154));
         //std::cout << "Z " << act.getOrigin().z() << std::endl;
         //!dirty setup dependent code TODO ERROR! only works in current sim environment
         //act.getOrigin().setZ(.1);
@@ -524,7 +524,7 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
             //if (current_push.num_removed > 0)
             //if (current_push.num_removed > 0.6 * max_remaining)
-                pushes->push_back(current_push);
+            pushes->push_back(current_push);
 
         }
 
@@ -562,13 +562,15 @@ struct manipulation_plan
 
 void print_manip_plan(manipulation_plan &manip)
 {
-    std::cout << "plan idx " << manip.abstract_plan_index;
+    std::cout << "idx " << manip.abstract_plan_index << " rem ";
     for (std::vector<int>::iterator it = manip.moved_objects.begin(); it!=manip.moved_objects.end(); it++)
-        std::cout << " rem " << *it;
+        std::cout << *it << "_";
+    std::cout << "primitives ";
     for (std::vector<int>::iterator it = manip.primitive.begin(); it!=manip.primitive.end(); it++)
-        std::cout << " prtv " << *it;
+        std::cout << *it << "_";
+    std::cout << "percentages";
     for (std::vector<double>::iterator it = manip.percentage.begin(); it!=manip.percentage.end(); it++)
-        std::cout << " % " << *it;
+        std::cout << *it << "%";
     std::cout << std::endl;
 }
 
@@ -996,6 +998,10 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         for (size_t k = 0; k < pushes.size(); ++k)
         {
 
+            //!TODO: REMOVE THIS, SPEEDUP FOR DEBUGGING, only five random pushes per cluster
+            if (pushes_by_cluster[pushes[k].cluster_index].size() > 6)
+                continue;
+
             //std::cout << "Push " << k << " cluster " << pushes[k].cluster_index <<  " vector " << pushes[k].object_motion.x() << " " << pushes[k].object_motion.y() << " " << pushes[k].object_motion.z() << std::endl;
             print_push(pushes[k]);
 
@@ -1039,7 +1045,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
             //blocked[k].resize(kt-blocked[k].begin());
             std::cout << "Cluster " << k ;//<< " is not blocked by ";
             //for (std::set<int>::iterator it = not_blocked[k].begin(); it != not_blocked[k].end(); ++it)
-                //std::cout << *it << " ";
+            //std::cout << *it << " ";
             std::cout << "\t is blocked by ";
             for (std::set<int>::iterator it = blocked[k].begin(); it != blocked[k].end(); ++it)
                 std::cout << *it << " ";
@@ -1047,7 +1053,8 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         }
 
         // plan ahead
-        int horizon = std::min(2,(int)obj_only.size()); // remove fixed horizon
+        int horizon = std::min(1,(int)obj_only.size()); // remove fixed horizon
+        //horizon = std::max(2,horizon);
         std::vector<std::vector<plan> > graph;
         graph.resize(horizon+1);
 
@@ -1184,10 +1191,11 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                 }
 
                 indices[depth]++;
+                std::cout << "DEPTH " << depth << " indices[depth] " << indices[depth] << std::endl;
 
                 debi++;
-                if (debi > 50)
-                    found = true;
+                //if (debi > 50)
+                //  found = true;
 
                 //std::cout << "depth " << depth << std::endl;
                 //std::cout << " indices[depth]" << indices[depth] << std::endl;
@@ -1370,8 +1378,8 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
 
 
                 // check reachability for future primitives
-                // we know already the first primitive is executable
-                if (k > 0)
+                // we know already the first primitive is executable? we should, but do we !BUG
+                //if (k > 0)
                 {
                     for (size_t i = 0; i < ct_obj_only.size(); ++i)
                     {
@@ -1423,13 +1431,21 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         int failed_cluster = -1;
         int failed_primitive = -1;
 
+        std::set<size_t> tried_pushes;
+
         RobotArm::getInstance(arm)->open_gripper(0.01);
+
+        size_t num_executable = 0;
 
         for (std::vector<manipulation_plan>::iterator im = manip_plans.begin(); (im != manip_plans.end()) && !success; ++im)
         {
 
+
             if ((im->executable) && (im->moved_objects.size()>0))
             {
+
+                num_executable++;
+
                 size_t cluster_idx = im->moved_objects[0];
                 size_t primitive_idx = im->primitive[0];
 
@@ -1454,26 +1470,49 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                 int err = get_ik(arm, act_push.from, result);
                 int err2 = get_ik(arm, act_push.to , result_push);
 
-                ROS_INFO("ERROR CODES %i %i", err, err2);
+                //ROS_INFO("ERROR CODES %i %i", err, err2);
 
                 std::cout << "TRYING MANIPULATION PLAN";
                 print_manip_plan(*im);
                 //std::cout << std::endl;
 
-                if ((last_failed) && (cluster_idx == failed_cluster) && (primitive_idx == failed_primitive))
+                //if ((last_failed) && (cluster_idx == failed_cluster) && (primitive_idx == failed_primitive))
+                if (tried_pushes.find(cluster_idx * 1000000 + primitive_idx) != tried_pushes.end())
                 {
-                    ROS_INFO("Skipping plan with same initial primitive as the one that just failed");
+                    std::cout << "Skip" << std::endl;
                     continue;
                 }
 
+                ct_obj_only[cluster_idx].publish_markers = true;
+                ct_obj_only[cluster_idx].inCollision(act_push.arm, act_push.from);
+                ct_obj_only[cluster_idx].publish_markers = !silent;
+
                 int failure = RobotArm::getInstance(arm)->move_arm(act_push.from);
+
+                if (failure)
+                {
+                    {
+                        ROS_ERROR("Planning to home failed, trying alternative heuristic approach");
+                        tf::Pose higher = act_push.from;
+                        bool ik_good = true;
+                        while (ik_good)
+                        {
+                            higher.getOrigin() += tf::Vector3(0,0,0.01);
+                            ik_good = (get_ik(arm, higher, result) == 1);
+                        }
+                        higher.getOrigin() -= tf::Vector3(0,0,0.01);
+                        RobotArm::getInstance(arm)->move_arm_via_ik(higher);
+                    }
+                    RobotArm::getInstance(arm)->move_arm_via_ik(act_push.from);
+                    failure = 0;
+                }
+
                 if (failure == 0)
                 {
-
                     ROS_ERROR("MOVED THE ARM");
-                    RobotArm::getInstance(arm)->move_arm_joint(result_push,5);
+                    RobotArm::getInstance(arm)->move_arm_via_ik(act_push.to,5);
                     RobotArm::getInstance(arm)->open_gripper(0.02);
-                    RobotArm::getInstance(arm)->move_arm_joint(result,2);
+                    RobotArm::getInstance(arm)->move_arm_via_ik(act_push.from,2);
                     //try planning out of last position, if it fails, raise the arm to the max and then pull it back
                     if (RobotArm::getInstance(arm)->home_arm() != 0)
                     {
@@ -1494,14 +1533,22 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                 }
                 else
                 {
+
                     last_failed = true;
                     failed_cluster = cluster_idx;
                     failed_primitive = primitive_idx;
+
+                    tried_pushes.insert(cluster_idx * 1000000 + primitive_idx);
+
+                    //char c;
+                    //std::cin >> c;
                 }
 
 
             }
         }
+
+        std::cout << "manip_plans size" << manip_plans.size() << " executable ones " << num_executable << std::endl;
 
 
     }
@@ -1680,7 +1727,7 @@ void testOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud ,tf::Stamped<tf::Pose
     int arm = 0;
 
     ros::ServiceClient reset_planning_scene_client =
-                nh_->serviceClient<std_srvs::Empty>("/collider_node/reset");
+        nh_->serviceClient<std_srvs::Empty>("/collider_node/reset");
 
     while (ros::ok())
     {
