@@ -48,7 +48,7 @@ RobotArm::~RobotArm()
 }
 
 int
-RobotArm::move_arm_via_ik(tf::Pose goalPose, double time_to_target)
+RobotArm::move_arm_via_ik(tf::Pose goalPose, double time_to_target, bool raise_elbow)
 {
 
     pr2_controllers_msgs::JointTrajectoryControllerState arm_state= *(ros::topic::waitForMessage<pr2_controllers_msgs::JointTrajectoryControllerState >(side_ ?  "/l_arm_controller/state" : "/l_arm_controller/state"));
@@ -57,10 +57,28 @@ RobotArm::move_arm_via_ik(tf::Pose goalPose, double time_to_target)
     for (size_t k = 0; k < 7; k++)
         seed.push_back(arm_state.actual.positions[k]);
 
+    if (raise_elbow)
+        seed[2] = ((side_==0) ? -1.9 : 1.9);
+
     std::vector<double> ik_result;
+    ik_result.resize(7);
     int error_code = get_ik(side_, goalPose, seed, ik_result);
     ROS_INFO("ARM_IK ERROR CODE %i", error_code);
-    move_arm_joint(ik_result, time_to_target);
+    if (error_code == 1)
+        move_arm_joint(ik_result, time_to_target);
+    else
+    {
+        ROS_ERROR("IK ERROR %i", error_code);
+        for (size_t k = 0; k < 7; k++)
+            std::cout << ik_result[k] << " ";
+
+        geometry_msgs::Pose pose_msg;
+        tf::poseTFToMsg(goalPose, pose_msg);
+
+        std::cout << " POSE " << pose_msg << std::endl;
+
+        return 1;
+    }
     return 0;
 }
 

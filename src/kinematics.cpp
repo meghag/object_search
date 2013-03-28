@@ -1,5 +1,5 @@
 #include <kinematics_base/kinematics_base.h>
-
+#include <arm_navigation_msgs/convert_messages.h>
 #include <pluginlib/class_list_macros.h>
 #include <pluginlib/class_loader.h>
 #include <tf/tf.h>
@@ -37,19 +37,31 @@ int get_ik(const int arm, const tf::Pose targetPose, std::vector<double> &seed ,
 
     init_kinematics();
 
-    int error_code = 0;
+    arm_navigation_msgs::ArmNavigationErrorCodes error_code;
 
     geometry_msgs::Pose pose;
     tf::poseTFToMsg(targetPose,pose);
 
+    int num_retries = 0;
 
-    inverse_kinematics[arm]->getPositionIK(pose,
+    while ((error_code.val == -2) && (num_retries < 10)) {
+
+        inverse_kinematics[arm]->getPositionIK(pose,
                                            seed,
                                            jointValues,
-                                           error_code);
+                                           error_code.val);
+
+        if (error_code.val == -2)
+            ROS_INFO("IK FAILED DUE TO TIME_OUT, retrying");
+
+        std::string err_string = arm_navigation_msgs::armNavigationErrorCodeToString(error_code);
+
+        std::cout << "seeded IK error" << error_code.val << " is " << err_string << std::endl;
+
+    }
 
 
-    return error_code;
+    return error_code.val;
 
 }
 
@@ -68,22 +80,23 @@ int get_ik(const int arm, const tf::Pose targetPose, std::vector<double> &jointV
 
     std::vector<double> seed_state(tmp,tmp+7);
     //std::vector<double> solution(tmp,tmp+7);
-    int error_code = 0;
+    arm_navigation_msgs::ArmNavigationErrorCodes error_code;
 
-    geometry_msgs::Pose pose;
-    tf::poseTFToMsg(targetPose,pose);
+    //geometry_msgs::Pose pose;
+    //tf::poseTFToMsg(targetPose,pose);
 
     //std::cout << "Pose " << pose << std::endl;
 
-    inverse_kinematics[arm]->getPositionIK(pose,
-                                           seed_state,
-                                           jointValues,
-                                           error_code);
+    //inverse_kinematics[arm]->getPositionIK(pose,
+      //                                     seed_state,
+        //                                   jointValues,
+          //                                 error_code.val);
+    error_code.val = get_ik(arm, targetPose, seed_state, jointValues);
 
     //std::cout << "Error code" << error_code << std::endl;
     //for (int k = 0; k < 7; k++)
       //  std::cout << "joint " << k << " : " << solution[k] << std::endl;
 
-    return error_code;
+    return error_code.val;
 
 }

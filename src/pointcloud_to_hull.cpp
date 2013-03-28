@@ -197,7 +197,12 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
                            std::vector<TableTopObject*> obj_only,
                            std::vector<Push> *pushes = 0L)
 {
+
+    srand (time(NULL));
+
     GraspPlanning grasp;
+
+    size_t pushes_pre_size = pushes->size();
 
     tf::Transform push_transform;
     push_transform.setIdentity();
@@ -239,11 +244,13 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
 
     //tf::Stamped<tf::Pose> odom_to_torso = getPose("odom_combined", ik_frame_);
 
+    int random_entry = rand() % 100000;
+
     //! num grasps per cluster and arm
     // 0.02 sec for 12.5k
     for (int k =0; k < 1000; k++)
     {
-        tf::Pose act = VanDerCorput::vdc_pose_bound(cluster_min,cluster_max,k);
+        tf::Pose act = VanDerCorput::vdc_pose_bound(cluster_min,cluster_max,k + random_entry);
         //act.setRotation(tf::Quaternion((k % 1 == 0) ? 0.65 : -.65,0,0,.65));
         //act.getRotation() = act.getRotation().normalize();
         //act.setRotation(tf::Quaternion( 0.0445028, 0.57906,0.089325, 0.809154));
@@ -351,7 +358,8 @@ void generate_valid_pushes(std::vector<tf::Pose> &object_posterior_belief,
         //size_t min_remaining = object_posterior_belief.size() + 1;
 
         //for (std::vector<tf::Pose>::iterator it = reachable.begin(); (it!=reachable.end()) && ros::ok(); ++it)
-        for (size_t sit = 0 ; sit < reachable.size() ; sit++)
+        //for (size_t sit = 0 ; sit < reachable.size() ; sit++)
+        for (size_t sit = 0 ; (sit < reachable.size()) && (pushes->size() - pushes_pre_size < 7) ; sit++)
         {
             tf::Pose *it = &reachable[sit];
 
@@ -670,7 +678,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
 
     ROS_INFO("samples checked");
 
-    std::cout << "size of object belief " << object_posterior_belief.size() << std::endl;
+    std::cout << "size of object belief after checking for full cloud " << object_posterior_belief.size() << std::endl;
 
     pub_belief("belief_poses",object_posterior_belief);
 
@@ -729,19 +737,31 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         }
         obj_excluding.push_back(act);
 
+        std::cout << "act cloud size " << act->cloud->points.size() << std::endl;
+
+        //!check how many samples would remain once this cluster was removed
         size_t num_remaining = 0;
         for (std::vector<tf::Pose>::iterator it = object_posterior_belief.begin(); it!=object_posterior_belief.end(); it++)
         {
             if (obj.checkCoveredPointcloud(*it,identity,*act))
+                {
+                std::cout << "x";
                 num_remaining++;
+                }
+            else
+                std::cout << "0";
         }
 
-        std::cout << "REMAINIGN " << num_remaining << std::endl;
+        std::cout << "REMAINING " << num_remaining << std::endl;
 
         {
+            //!cross-check how many samples would remain once only this cluster was there
 
             std::cout << "Cluster size" << clusters[i]->points.size() << std::endl;
             act_inv->addPointCloud(sensor_in_fixed.getOrigin(), bb_min.z(), clusters[i]);
+
+            std::cout << "act_inv cloud size " << act_inv->cloud->points.size() << std::endl;
+
             obj_only.push_back(act_inv);
             size_t num_remaining_inv = 0;
             for (std::vector<tf::Pose>::iterator it = object_posterior_belief.begin(); it!=object_posterior_belief.end(); it++)
@@ -750,7 +770,7 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                     num_remaining_inv++;
             }
 
-            std::cout << "REMAINIGN INVERSE" << num_remaining_inv << std::endl;
+            std::cout << "REMAINING INVERSE" << num_remaining_inv << std::endl;
 
         }
 
@@ -999,8 +1019,8 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
         {
 
             //!TODO: REMOVE THIS, SPEEDUP FOR DEBUGGING, only five random pushes per cluster
-            if (pushes_by_cluster[pushes[k].cluster_index].size() > 6)
-                continue;
+            //if (pushes_by_cluster[pushes[k].cluster_index].size() > 6)
+              //  continue;
 
             //std::cout << "Push " << k << " cluster " << pushes[k].cluster_index <<  " vector " << pushes[k].object_motion.x() << " " << pushes[k].object_motion.y() << " " << pushes[k].object_motion.z() << std::endl;
             print_push(pushes[k]);
@@ -1357,6 +1377,8 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
 
                 obj_relative_positions[cluster_idx] += curr_push->object_motion;
 
+                std::cout << "mot " << curr_push->object_motion.x() << " " << curr_push->object_motion.y() << " " << curr_push->object_motion.z() << std::endl;
+
                 bool colliding = false;
                 tf::Transform identity_transform;
                 identity_transform.setIdentity();
@@ -1501,9 +1523,9 @@ int planStep(int arm, TableTopObject obj, std::vector<tf::Pose> apriori_belief, 
                             ik_good = (get_ik(arm, higher, result) == 1);
                         }
                         higher.getOrigin() -= tf::Vector3(0,0,0.01);
-                        RobotArm::getInstance(arm)->move_arm_via_ik(higher);
+                        RobotArm::getInstance(arm)->move_arm_via_ik(higher, 2, true);
                     }
-                    RobotArm::getInstance(arm)->move_arm_via_ik(act_push.from);
+                    RobotArm::getInstance(arm)->move_arm_via_ik(act_push.from, 2, true);
                     failure = 0;
                 }
 

@@ -234,6 +234,7 @@ bool TableTopObject::checkCollision(tf::Transform ownTransform, tf::Transform ot
     {
         ROS_ERROR("Other object does not have octomap!");
         otherObject.initOcto();
+        return false;
     }
 
     /*{
@@ -329,12 +330,16 @@ bool TableTopObject::checkCoveredPointcloud(tf::Transform ownTransform, tf::Tran
     {
         ROS_ERROR("Other object does not have octomap!");
         otherObject.initOcto();
+        return false;
     }
-
 
     tf::Transform resultingTransform = otherTransform.inverseTimes(ownTransform);
 
     geometry_msgs::Transform trans;
+
+    //! if the other object is empty, it can not hide anything behind it
+    if (otherObject.cloud->points.size() == 0)
+        return false;
 
     for (size_t i = 0; i < cloud->points.size(); ++i)
     {
